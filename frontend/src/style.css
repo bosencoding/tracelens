@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-surface text-on-surface font-sans antialiased;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* cards, chips and buttons live here so views stay about data, not paint */
+  .card {
+    @apply bg-surface-lowest border border-outline-variant rounded-card shadow-card;
+  }
+  .card-hero {
+    @apply bg-surface-lowest border border-outline-variant rounded-hero shadow-card;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-pill text-label-sm font-semibold;
+  }
+  .pill-success {
+    @apply pill bg-success-soft border border-success-line text-success;
+  }
+  .pill-danger {
+    @apply pill bg-danger-soft border border-danger-line text-danger;
+  }
+  .pill-warning {
+    @apply pill bg-warning-soft border border-warning-line text-[#B45309];
+  }
+  .pill-neutral {
+    @apply pill bg-surface-container-low border border-outline-variant text-on-surface-variant;
+  }
+  .btn-primary {
+    @apply h-12 inline-flex items-center justify-center gap-2 rounded-control bg-primary px-5
+      text-body-md font-semibold text-on-primary shadow-[0_2px_8px_rgba(0,78,159,0.24)]
+      hover:bg-primary-hover active:scale-[0.99] transition disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+  }
+  .btn-secondary {
+    @apply h-11 inline-flex items-center justify-center gap-2 rounded-control border border-outline-variant
+      bg-surface-lowest px-4 text-body-sm font-semibold text-on-surface hover:bg-surface-container-low
+      active:scale-[0.99] transition disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+  }
+  .kicker {
+    @apply font-mono text-label-sm uppercase tracking-[0.08em] text-on-surface-variant;
+  }
+  .metric-bar {
+    @apply h-2 w-full rounded-pill bg-surface-container-high overflow-hidden;
+  }
+  .data-mono {
+    @apply font-mono text-label-md tabular;
+  }
+  .nav-tab {
+    @apply flex flex-col items-center justify-center gap-0.5 min-h-[44px] px-3 text-label-sm
+      font-mono uppercase tracking-wide text-on-surface-variant hover:text-on-surface transition;
+  }
+  .nav-tab-active {
+    @apply text-primary;
+  }
+}
