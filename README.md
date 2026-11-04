@@ -94,6 +94,27 @@ image, encoded three ways, labelled "contoh" everywhere.
 fake Canon EXIF with Photoshop-after-capture · luma q90 + chroma q55 (double compression) ·
 Make without MakerNote.
 
+## Real datasets (importer)
+
+Any folder of JPEGs can become reference rows — no code change:
+
+```sh
+cd backend
+uv run python -m tools.import_reference --dir ~/datasets/SOCRatES --label-prefix soc --dry-run
+uv run python -m tools.import_reference --dir ~/datasets/SOCRatES --label-prefix soc
+uv run python -m tools.import_reference --list sidecar.csv --update   # path per line
+```
+
+Groups by EXIF `Make`+`Model`, takes the per-position median of each quantization table,
+labels the row `<prefix> <make> <model>`, id `REF-<sha1(make|model)[:8]>`. Idempotent: a
+second run skips existing ids unless `--update` is passed. Files without Make/Model land in a
+`TANPA-EXIF/…` group and are reported as a warning; unreadable or >20 MB files are skipped and
+counted, never fatal. Seed rows `REF-A/B/C` are untouched.
+
+Caveat: only **camera-native JPEGs** carry the camera's own tables. RAW (e.g. RAISE `.NEF/.CR2`)
+must not be converted first — Pillow/libjpeg would write its own tables and you would fingerprint
+the converter, not the camera.
+
 ## Acceptance mapping
 
 | id | evidence |
