@@ -1,4 +1,4 @@
-import type { AppSettings, Evidence, EvidenceDetail, Match, Signature } from './types'
+import type { AppSettings, Evidence, EvidenceDetail, Match, ReferenceCamera, Signature } from './types'
 
 // Same host as the page, API port 8001. VITE_API_BASE only overrides when the API is elsewhere.
 const BASE =
@@ -46,4 +46,5 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ max_upload_mb: maxUploadMb }),
     }),
+  referenceCameras: () => call<{ cameras: ReferenceCamera[] }>('/api/reference-cameras'),
 }

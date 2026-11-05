@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -55,3 +56,28 @@ def dumps(value: Any) -> str:
 
 def loads(value: str | None, fallback: Any) -> Any:
     return json.loads(value) if value else fallback
+
+
+def list_reference_cameras() -> list[dict[str, Any]]:
+    """List all reference cameras with parsed quantization tables."""
+    sql = """
+        SELECT 
+            id, label, make, model, 
+            qtable_luma, qtable_chroma,
+            subsampling, note
+        FROM reference_cameras
+        ORDER BY make, model
+    """
+    results = []
+    for r in rows(sql):
+        results.append({
+            "id": r["id"],
+            "label": r["label"],
+            "make": r["make"],
+            "model": r["model"],
+            "luma_table": loads(r.get("qtable_luma"), []),
+            "chroma_table": loads(r.get("qtable_chroma"), []),
+            "subsampling": r.get("subsampling", "4:2:0"),
+            "note": r.get("note", ""),
+        })
+    return results

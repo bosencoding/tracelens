@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db, errors, routes_evidence, routes_settings, runtime_settings
+from . import db, errors, routes_evidence, routes_reference, routes_settings, runtime_settings
 from .config import settings
 
 
@@ -38,6 +38,7 @@ app.add_middleware(
 
 errors.install(app)
 app.include_router(routes_evidence.router)
+app.include_router(routes_reference.router)
 app.include_router(routes_settings.router)
 
 

@@ -54,6 +54,17 @@ const currentId = computed(() => (route.params.id as string) || '')
             <AppIcon name="scan" :size="16" /> Hasil
           </RouterLink>
           <RouterLink
+            to="/referensi"
+            class="flex items-center gap-2 rounded-control px-3 py-2 text-body-sm font-semibold transition"
+            :class="
+              route.name === 'reference'
+                ? 'bg-surface-container-low text-primary'
+                : 'text-on-surface-variant hover:bg-surface-container-low/60 hover:text-on-surface'
+            "
+          >
+            <AppIcon name="grid" :size="16" /> Referensi
+          </RouterLink>
+          <RouterLink
             to="/pengaturan"
             class="flex items-center gap-2 rounded-control px-3 py-2 text-body-sm font-semibold transition"
             :class="

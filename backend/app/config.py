@@ -5,8 +5,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+BACKEND = Path(__file__).resolve().parent.parent
+DATA = BACKEND / "data"
 
 
 class Settings(BaseSettings):

@@ -98,3 +98,18 @@ export interface EvidenceDetail extends Evidence {
   signature: Signature
   matches: Match[]
 }
+
+export interface ReferenceCamera {
+  id: string
+  label: string
+  make: string
+  model: string
+  luma_table: number[]
+  chroma_table: number[]
+  subsampling: string
+  note: string
+}
+
+export interface ReferenceList {
+  cameras: ReferenceCamera[]
+}
