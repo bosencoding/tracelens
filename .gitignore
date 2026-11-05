@@ -23,3 +23,9 @@ backend/.secrets/
 # stray backups
 *.bak/
 .git.bak/
+
+# downloaded datasets (not committed)
+datasets/
+
+# macOS
+.DS_Store

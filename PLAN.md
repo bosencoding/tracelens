@@ -28,7 +28,7 @@ Cut: `/bulk`, `/analysis` tab ELA/DCT/Hex, seal ECDSA, PDF server-side, auth.
 
 ## Tasks (Vue-FastAPI Builder owns all)
 T1 token + shell: Tailwind theme dari DESIGN.md frontmatter — primary `#004E9F`, surface `#F8F9FF`, on-surface `#0B1C30`, outline `#C1C6D5`, outline-variant, success `#16A34A`, tamper `#DC2626`, advisory `#F59E0B`, container `#EFF4FF/#E5EEFF/#DCE9FF`, secondary `#006C49`, error `#BA1A1A`. Inter UI; `label-md` = JetBrains Mono 12/16/500 tabular untuk hash, serial, timestamp. Radius kartu 16, hero 24, skala 8pt. Header: TraceLens, `#CAS-…`, mode badge, nav. Tanpa gradien; glass hanya di HUD.
-T2 `/` upload: terima `.jpg/.jpeg` maks 20 MB, tolak selain itu dengan pesan jelas; daftar riwayat dari API; setelah unggah → `/hasil/:id`.
+T2 `/` upload: terima `.jpg/.jpeg` maks 50 MB (`MAX_UPLOAD_MB`), tolak selain itu dengan pesan jelas; daftar riwayat dari API; setelah unggah → `/hasil/:id`.
 T3 `/hasil/:id`: verdict card (kamera/encoder paling mungkin + confidence bar + catatan batasan), 4 tab: EXIF (field + tandai hilang/tidak konsisten), Tabel Kuantisasi (2 grid 8×8 angka mono + fingerprint hex), Jejak Edit (thumbnail mismatch, double compression, software-after-capture), Ringkasan (skor per komponen + alasan).
 T4 `/laporan/:id`: header dokumen, identitas file, verdict, ringkasan temuan, disclaimer sintetis + batasan metode, tombol Cetak/Simpan PDF lewat print CSS.
 T5 FastAPI: `POST /api/evidence` (multipart, validasi mime+ukuran), `GET /api/evidence`, `GET /api/evidence/{id}`, `GET /api/evidence/{id}/signature` (EXIF, qtable pair, fingerprint hex, encoder guess, subsampling), `GET /api/evidence/{id}/matches` (top-3 + similarity), `DELETE /api/evidence/{id}`. Pydantic sebagai kontrak; error `{detail, code}`; 404/415/422.
