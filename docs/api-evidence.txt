@@ -1,12 +1,12 @@
-# TraceLens v2 API evidence — 2026-11-04 20:55 local
+# TraceLens v2 API evidence — 2026-11-05 07:31 local
 # reproduced by: cd backend && uv run python scripts/api_evidence.py
 GET /api/health                                      200 77B keys=status,engine,data,db
-GET /api/evidence                                    200 list[7]
+GET /api/evidence                                    200 list[10]
 GET /api/evidence/EVD-CONTOH-A                       200 4188B verdict=kuat conf=0.9775
 GET /api/evidence/EVD-CONTOH-A/signature             200 2653B fp=28ff0b096ea5… q=64/64
 GET /api/evidence/EVD-CONTOH-A/matches               200 list[3] REF-A=1.0 REF-C=0.401 REF-B=0.3195
 #   nilai similarity mengikuti tabel referensi yang ada di DB saat dijalankan, bukan konstanta di kode
-POST /api/evidence (multipart jpeg)                  201 4185B verdict=kuat conf=0.9775
+POST /api/evidence (multipart jpeg)                  201 4141B verdict=kuat conf=0.9775
 
 # negative paths
 POST /api/evidence (.txt)                            415 119B code=unsupported_media_type detail=berkas 'tracelens-notjpeg.txt' bukan JPEG. Hanya .jpg/.jpeg 
