@@ -50,3 +50,31 @@ DB proyek        data/tracelens.db tetap 3 referensi             tidak disentuh
 Catatan jujur: beberapa merek berbagi fingerprint identik (`Nothing`, `vivo`, `Xiaomi` →
 `cd78e5f3be88`) karena median tabel mencerminkan setelan encoder, bukan bodi kamera. Sudah ditulis
 di README: tabel mengidentifikasi pipeline, label yang membedakan baris.
+
+## Tambahan: batas unggahan 20 MB → 50 MB (pesan `47dede9b`)
+
+Commit `e2989cd` (`feat(api): raise the upload limit from 20 MB to 50 MB`). Diubah di satu titik per
+lapisan supaya tidak ada angka yang tertulis dua kali:
+
+| file | perubahan |
+|---|---|
+| `backend/app/config.py` | `max_upload_mb = 50` (`max_bytes` turunan) |
+| `backend/.env.example` | `MAX_UPLOAD_MB=50` |
+| `frontend/src/api.ts` | `MAX_MB = 50`, `MAX_BYTES = MAX_MB * 1024 * 1024` |
+| `frontend/src/views/UploadView.vue` | hint "maksimal {{ MAX_MB }} MB" + pesan tolak "melebihi batas {{ MAX_MB }} MB" |
+| `README.md` | tabel env, route `/`, baris POST, catatan importer |
+| `docs/api-evidence.txt` | contoh 413 memakai berkas 51 MB; tambah kasus 21 MB → 201 |
+
+Importer tidak diikat: `backend/tools/import_reference.py` tetap memakai `--max-mb` sendiri (default
+`0` = tanpa batas), tidak menyentuh `MAX_UPLOAD_MB` (grep: tidak ada referensi).
+
+Uji:
+
+```
+POST 51 MB         413 code=file_too_large detail="berkas 51.0 MB melebihi batas 50 MB"
+POST 21 MB (jpeg)  201 verdict=kuat conf=0.9775   (dulu ditolak 413, sekarang lolos)
+UI klien           51 MB → "tracelens-big.jpg 51.00 MB melebihi batas 50 MB.", tetap di "/" (tanpa request)
+UI hint            ".jpg / .jpeg · maksimal 50 MB · satu berkas"
+npm run build      bersih; ruff check app scripts bersih
+```
+
