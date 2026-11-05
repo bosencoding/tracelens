@@ -12,6 +12,7 @@ const busy = ref(false)
 const dragging = ref(false)
 const loading = ref(true)
 const limitMb = ref<number | null>(null)
+const brokenThumbs = ref<Set<string>>(new Set())
 
 const fmtSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.round(bytes / 1024)} KB`
@@ -191,13 +192,23 @@ onUnmounted(() => {
         >
           <div class="flex min-w-0 flex-1 items-center gap-3">
             <img
+              v-if="!brokenThumbs.has(item.id)"
               :src="api.thumbnailUrl(item.id)"
               alt=""
               loading="lazy"
               class="h-10 w-10 shrink-0 rounded border border-outline-variant object-cover"
               :data-thumb="item.id"
-              @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+              @error="brokenThumbs.add(item.id)"
             />
+            <div
+              v-else
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-outline-variant bg-surface-container-low text-outline"
+              role="img"
+              aria-label="pratinjau tidak tersedia"
+              :data-thumb-missing="item.id"
+            >
+              <AppIcon name="image-off" :size="16" />
+            </div>
             <div class="min-w-0">
               <RouterLink
                 :to="`/hasil/${item.id}`"

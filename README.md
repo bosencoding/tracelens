@@ -46,7 +46,7 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 | where | port | vars |
 |---|---|---|
 | API | 8001 | `MAX_UPLOAD_MB` (seed only, default 50), `DB_PATH`, `UPLOAD_DIR`, `CORS_ORIGINS` — all optional, defaults work, no `.env` needed |
-| Vite dev | 5173 | `VITE_API_BASE` (default `http://localhost:8001`) |
+| Vite dev | 5173 | `VITE_API_BASE` — optional; the bundle otherwise calls the API on the **same host** as the page, port 8001 (`location.protocol//location.hostname:8001`), so one build works on localhost and on the LAN IP |
 
 ## Routes
 

@@ -1,6 +1,8 @@
 import type { AppSettings, Evidence, EvidenceDetail, Match, Signature } from './types'
 
-const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8001'
+// Same host as the page, API port 8001. VITE_API_BASE only overrides when the API is elsewhere.
+const BASE =
+  import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:8001`
 
 export class ApiError extends Error {
   code: string
