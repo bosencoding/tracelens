@@ -79,6 +79,16 @@ class MatchOut(BaseModel):
     explanation: str
 
 
+class EnrichmentOut(BaseModel):
+    added: bool
+    reference_id: str | None = None
+    label: str | None = None
+    make: str | None = None
+    model: str | None = None
+    similarity: float | None = None
+    reason: str | None = None
+
+
 class AppSettings(BaseModel):
     max_upload_mb: int
     db_file: str
@@ -110,3 +120,4 @@ class EvidenceOut(BaseModel):
 class EvidenceDetail(EvidenceOut):
     signature: SignatureOut
     matches: list[MatchOut]
+    enrichment: EnrichmentOut | None = None

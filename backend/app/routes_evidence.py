@@ -188,7 +188,13 @@ async def upload(file: UploadFile = File(...)) -> EvidenceDetail:
                 match["explanation"],
             ),
         )
-    return detail(evidence_id)
+    
+    # Auto-enrichment: add camera to reference if not found
+    enrichment = analyze.auto_enrich_reference(result, raw)
+    
+    response = detail(evidence_id)
+    response.enrichment = enrichment
+    return response
 
 
 @router.get("", response_model=list[EvidenceOut])

@@ -423,14 +423,22 @@ def _matches(
 ) -> list[dict]:
     scored = []
     for ref in references:
-        sim = round((similarity(luma, ref["luma"]) + similarity(chroma, ref["chroma"])) / 2, 4)
+        table_sim = round((similarity(luma, ref["luma"]) + similarity(chroma, ref["chroma"])) / 2, 4)
         same_make = (exif.get("make") or "").strip().lower() == ref["make"].lower()
         same_model = (exif.get("model") or "").strip().lower() == ref["model"].lower()
-        reason = [f"kemiripan tabel {sim:.3f}"]
+        
+        # Boost similarity when EXIF matches reference camera
+        sim = table_sim
         if same_model:
-            reason.append("model EXIF sama persis")
+            sim = min(1.0, sim + 0.15)  # +15% for exact model match
         elif same_make:
-            reason.append("merek EXIF sama")
+            sim = min(1.0, sim + 0.05)  # +5% for same brand
+        
+        reason = [f"kemiripan tabel {table_sim:.3f}"]
+        if same_model:
+            reason.append("model EXIF sama persis (+15%)")
+        elif same_make:
+            reason.append("merek EXIF sama (+5%)")
         if encoder_guess.split(" ")[0] in ref["encoder"]:
             reason.append("encoder sejalan")
         scored.append(
@@ -443,11 +451,17 @@ def _matches(
                 "note": ref["note"],
                 "similarity": sim,
                 "explanation": "; ".join(reason),
+                "_same_model": same_model,
+                "_same_make": same_make,
             }
         )
-    scored.sort(key=lambda item: item["similarity"], reverse=True)
+    # Sort by: similarity (desc), then EXIF model match (desc), then EXIF make match (desc)
+    scored.sort(key=lambda item: (item["similarity"], item["_same_model"], item["_same_make"]), reverse=True)
     for index, item in enumerate(scored, start=1):
         item["rank"] = index
+        # Remove internal sorting keys before returning
+        del item["_same_model"]
+        del item["_same_make"]
     return scored
 
 
@@ -481,3 +495,87 @@ def _verdict(confidence: float, best_label: str | None, encoder: str) -> tuple[s
         "Metadata dan tabel kuantisasi tidak cukup untuk menetapkan kamera; "
         "hanya encoder yang bisa ditegaskan.",
     )
+
+
+def auto_enrich_reference(
+    analysis_result: dict, raw: bytes, similarity_threshold: float = 0.5
+) -> dict:
+    """Auto-add camera to reference database if not found and EXIF exists.
+    
+    Returns enrichment status dict with 'added' boolean and 'reference_id' if added.
+    """
+    from . import db
+    
+    # Check if EXIF Make/Model exists
+    signature = analysis_result.get("signature", {})
+    exif = signature.get("exif", {})
+    make = (exif.get("make") or "").strip()
+    model = (exif.get("model") or "").strip()
+    
+    if not make or not model:
+        return {"added": False, "reason": "EXIF Make/Model tidak ada"}
+    
+    # Check if camera already exists in reference_cameras (by EXIF Make/Model)
+    existing = db.rows(
+        "SELECT id FROM reference_cameras WHERE make = ? AND model = ?",
+        (make, model)
+    )
+    
+    if existing:
+        return {"added": False, "reason": f"kamera sudah ada di referensi (id: {existing[0]['id']})"}
+    
+    # Check best match similarity for reporting
+    matches = analysis_result.get("matches", [])
+    best_similarity = matches[0].get("similarity", 0.0) if matches else 0.0
+    
+    # Create new reference entry
+    luma = signature.get("qtable", {}).get("luma", [])
+    chroma = signature.get("qtable", {}).get("chroma", [])
+    subsampling = signature.get("encoder", {}).get("subsampling", "4:2:0")
+    encoder = signature.get("encoder", {}).get("guess", "unknown")
+    fingerprint_hex = signature.get("fingerprint_hex", "")
+    
+    if not luma or not chroma:
+        return {"added": False, "reason": "quantization tables tidak valid"}
+    
+    # Generate reference ID
+    digest = hashlib.sha1(f"{make}|{model}".casefold().encode()).hexdigest()[:8].upper()
+    ref_id = f"REF-{digest}"
+    
+    # Create label and note
+    label = f"Auto: {make} {model}"
+    note = f"Ditambahkan otomatis dari upload. Similarity terbaik: {best_similarity:.2f}."
+    what_if = "Referensi ditambahkan otomatis. Verifikasi manual disarankan untuk akurasi tinggi."
+    
+    # Insert into reference_cameras
+    try:
+        db.execute(
+            """INSERT INTO reference_cameras 
+               (id, label, make, model, encoder, note, qtable_luma, qtable_chroma, 
+                fingerprint_hex, subsampling, what_if, is_auto_added)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (
+                ref_id,
+                label,
+                make,
+                model,
+                encoder,
+                note,
+                db.dumps(luma),
+                db.dumps(chroma),
+                fingerprint_hex,
+                subsampling,
+                what_if,
+            ),
+        )
+        
+        return {
+            "added": True,
+            "reference_id": ref_id,
+            "label": label,
+            "make": make,
+            "model": model,
+            "similarity": best_similarity,
+        }
+    except Exception as e:
+        return {"added": False, "reason": f"error saat menambahkan: {str(e)}"}

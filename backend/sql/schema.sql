@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS reference_cameras (
   qtable_chroma    TEXT NOT NULL,
   fingerprint_hex  TEXT NOT NULL,
   subsampling      TEXT NOT NULL,
-  what_if          TEXT NOT NULL
+  what_if          TEXT NOT NULL,
+  is_auto_added    INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS matches (
