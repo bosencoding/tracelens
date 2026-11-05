@@ -12,6 +12,9 @@ const notFound = ref(false)
 const loading = ref(true)
 const tab = ref<'exif' | 'qtable' | 'trace' | 'summary'>('exif')
 const copied = ref('')
+const thumbState = ref<'loading' | 'ok' | 'error'>('loading')
+
+const sizeMb = computed(() => ((detail.value?.byte_size ?? 0) / 1024 / 1024).toFixed(2))
 
 const evidenceId = computed(() => route.params.id as string)
 
@@ -40,6 +43,7 @@ async function load() {
   loading.value = true
   error.value = ''
   notFound.value = false
+  thumbState.value = 'loading'
   try {
     detail.value = await api.detail(evidenceId.value)
   } catch (e) {
@@ -102,8 +106,55 @@ watch(evidenceId, load)
       </RouterLink>
     </section>
 
-    <section class="card-hero p-5 md:p-6">
-      <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <section class="card overflow-hidden" data-testid="evidence-thumb">
+        <div class="relative aspect-[4/3] w-full bg-surface-container-low">
+          <img
+            v-show="thumbState !== 'error'"
+            :src="api.thumbnailUrl(detail.id)"
+            :alt="`Pratinjau ${detail.filename}`"
+            loading="lazy"
+            class="h-full w-full object-cover"
+            data-testid="evidence-thumb-img"
+            @load="thumbState = 'ok'"
+            @error="thumbState = 'error'"
+          />
+          <div
+            v-if="thumbState === 'loading'"
+            class="absolute inset-0 flex items-center justify-center font-mono text-code-sm text-on-surface-variant"
+          >
+            memuat pratinjau…
+          </div>
+          <div
+            v-else-if="thumbState === 'error'"
+            class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-surface-container-low text-center"
+            data-testid="thumb-error"
+          >
+            <AppIcon name="alert" :size="18" class="text-danger" />
+            <span class="text-code-sm text-on-surface-variant">pratinjau tidak tersedia</span>
+          </div>
+        </div>
+        <div class="flex flex-col gap-1 p-3">
+          <p class="truncate text-body-sm font-semibold" :title="detail.filename">{{ detail.filename }}</p>
+          <p class="font-mono text-code-sm text-on-surface-variant">
+            <span class="tabular">{{ detail.width }}×{{ detail.height }}</span> ·
+            <span class="tabular">{{ sizeMb }} MB</span> ·
+            <span class="tabular">{{ detail.signature.encoder.subsampling }}</span>
+          </p>
+          <a
+            :href="api.imageUrl(detail.id)"
+            target="_blank"
+            rel="noopener"
+            class="mt-1 inline-flex items-center gap-1 text-body-sm font-semibold text-primary hover:underline"
+            data-testid="full-size-link"
+          >
+            <AppIcon name="eye" :size="15" /> Lihat ukuran penuh
+          </a>
+        </div>
+      </section>
+
+      <section class="card-hero p-5 md:p-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
           <span class="kicker text-[10px]">VERDICT SIGNATURE</span>
           <p class="mt-1 text-headline-lg tracking-tight">{{ detail.camera_guess }}</p>
@@ -138,7 +189,8 @@ watch(evidenceId, load)
           <span>{{ detail.signature.encoder.app_markers.join(' · ') || 'tanpa penanda APP' }}</span>
         </div>
       </div>
-    </section>
+      </section>
+    </div>
 
     <section class="card overflow-hidden">
       <div class="flex flex-wrap gap-1 border-b border-outline-variant px-3 pt-2">

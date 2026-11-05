@@ -67,11 +67,27 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 | GET | `/api/evidence/{id}` | evidence + signature + top-3 matches |
 | GET | `/api/evidence/{id}/signature` | EXIF, qtable pair, fingerprint hex, encoder info, traces, component scores |
 | GET | `/api/evidence/{id}/matches` | 3 candidates, similarity descending |
+| GET/HEAD | `/api/evidence/{id}/image` | original bytes, `image/jpeg`, correct `Content-Length`, `ETag` = file sha256; 410 if the file vanished |
+| GET/HEAD | `/api/evidence/{id}/thumbnail` | ≤480 px JPEG built per request (EXIF orientation honoured), `Cache-Control: private, max-age=3600`, `ETag`, 304 on `If-None-Match`; no derivative file written |
 | DELETE | `/api/evidence/{id}` | 204, removes row and stored file |
 | GET | `/api/settings` | `{max_upload_mb, db_path, evidence_count, app_version}` |
 | PATCH | `/api/settings` | body `{max_upload_mb}` 1–500; 422 with `fields:["max_upload_mb"]`; loopback/CORS-origin only, else 403 |
 
 Errors are uniform `{detail, code}` (`fields` on 422). CORS allows `http://localhost:5173`.
+
+## Evidence preview
+
+`/hasil/:id` shows a fixed-ratio (`aspect-[4/3]`, `object-fit: cover`) thumbnail card with the file
+name, dimensions, size in MB and a "Lihat ukuran penuh" link to `/image`; the list on `/` shows a
+40 px thumbnail per row. Both images come from the API:
+
+- `/image` serves the stored file **unchanged** — no re-encode, so the sha256 in the DB still matches
+  the bytes on disk (verified before and after a thumbnail request).
+- `/thumbnail` is generated on demand with Pillow (`draft` → `exif_transpose` → `thumbnail` 480 px)
+  and returned from memory; nothing is written to the upload directory.
+- Both take the id from the DB, never a path from the caller; unknown id → 404 `not_found`, missing
+  file on disk → 410 `file_missing`, unreadable file → 422 `image_unreadable`. No absolute path is
+  ever in a response body.
 
 ## Runtime settings
 

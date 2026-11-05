@@ -35,6 +35,8 @@ export const api = {
   signature: (id: string) => call<Signature>(`/api/evidence/${id}/signature`),
   matches: (id: string) => call<Match[]>(`/api/evidence/${id}/matches`),
   remove: (id: string) => call<void>(`/api/evidence/${id}`, { method: 'DELETE' }),
+  imageUrl: (id: string) => `${BASE}/api/evidence/${id}/image`,
+  thumbnailUrl: (id: string) => `${BASE}/api/evidence/${id}/thumbnail`,
   settings: () => call<AppSettings>('/api/settings'),
   updateSettings: (maxUploadMb: number) =>
     call<AppSettings>('/api/settings', {

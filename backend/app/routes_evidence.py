@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
-from fastapi.responses import Response
-from PIL import Image, UnidentifiedImageError
+from fastapi import APIRouter, File, Request, UploadFile
+from fastapi.responses import FileResponse, Response
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import analyze, db, runtime_settings
 from .config import settings
@@ -200,6 +201,57 @@ def detail(evidence_id: str) -> EvidenceDetail:
     row = _row(evidence_id)
     return EvidenceDetail(
         **_out(row).model_dump(), signature=_signature(evidence_id), matches=_matches(evidence_id)
+    )
+
+
+THUMB_MAX_PX = 480
+CACHE_HEADER = "private, max-age=3600"
+
+
+def _stored_file(evidence_id: str) -> tuple[dict, Path]:
+    """Row + path from the DB id only — never a path supplied by the caller."""
+    row = _row(evidence_id)
+    path = Path(row["stored_path"])
+    if not path.is_file():
+        raise ApiError(f"berkas asli untuk {evidence_id} tidak ada di disk", "file_missing", 410)
+    return row, path
+
+
+@router.api_route("/{evidence_id}/image", methods=["GET", "HEAD"])
+def get_image(evidence_id: str, request: Request) -> Response:
+    """The original bytes, untouched: the DB sha256 must still match this file."""
+    row, path = _stored_file(evidence_id)
+    headers = {"Cache-Control": CACHE_HEADER, "ETag": f'"{row["sha256"]}"'}
+    if request.method == "HEAD":
+        # FileResponse drops Content-Length on HEAD in this starlette version
+        return Response(
+            status_code=200,
+            media_type="image/jpeg",
+            headers={**headers, "Content-Length": str(row["byte_size"])},
+        )
+    return FileResponse(path, media_type="image/jpeg", headers=headers)
+
+
+@router.api_route("/{evidence_id}/thumbnail", methods=["GET", "HEAD"])
+def get_thumbnail(evidence_id: str, request: Request) -> Response:
+    """480 px longest side, built on demand from the original; nothing is written to disk."""
+    row, path = _stored_file(evidence_id)
+    etag = f'"{row["sha256"]}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": CACHE_HEADER})
+    try:
+        with Image.open(path) as img:
+            img.draft("RGB", (THUMB_MAX_PX * 2, THUMB_MAX_PX * 2))  # cheap JPEG pre-scale
+            upright = ImageOps.exif_transpose(img)
+            upright.thumbnail((THUMB_MAX_PX, THUMB_MAX_PX), Image.LANCZOS)
+            buf = io.BytesIO()
+            upright.convert("RGB").save(buf, "JPEG", quality=82, optimize=True)
+    except (OSError, UnidentifiedImageError) as exc:
+        raise ApiError(f"berkas {evidence_id} tidak bisa dibaca: {exc}", "image_unreadable", 422) from exc
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/jpeg",
+        headers={"Cache-Control": CACHE_HEADER, "ETag": etag},
     )
 
 

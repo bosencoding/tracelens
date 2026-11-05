@@ -177,18 +177,28 @@ onMounted(refresh)
           class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/60 px-4 py-3 last:border-0"
           :data-evidence="item.id"
         >
-          <div class="min-w-0 flex-1">
-            <RouterLink
-              :to="`/hasil/${item.id}`"
-              class="font-mono text-label-md font-semibold text-primary hover:underline"
-            >
-              {{ item.id }}
-            </RouterLink>
+          <div class="flex min-w-0 flex-1 items-center gap-3">
+            <img
+              :src="api.thumbnailUrl(item.id)"
+              alt=""
+              loading="lazy"
+              class="h-10 w-10 shrink-0 rounded border border-outline-variant object-cover"
+              :data-thumb="item.id"
+              @error="($event.target as HTMLImageElement).style.visibility = 'hidden'"
+            />
+            <div class="min-w-0">
+              <RouterLink
+                :to="`/hasil/${item.id}`"
+                class="font-mono text-label-md font-semibold text-primary hover:underline"
+              >
+                {{ item.id }}
+              </RouterLink>
             <p class="truncate text-body-sm">{{ item.filename }}</p>
-            <p class="font-mono text-code-sm text-on-surface-variant">
-              {{ fmtSize(item.byte_size) }} · {{ item.width }}×{{ item.height }} ·
-              {{ fmtDate(item.uploaded_at) }}
-            </p>
+              <p class="font-mono text-code-sm text-on-surface-variant">
+                {{ fmtSize(item.byte_size) }} · {{ item.width }}×{{ item.height }} ·
+                {{ fmtDate(item.uploaded_at) }}
+              </p>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <span :class="verdictClass(item.verdict_label)" class="font-mono uppercase">

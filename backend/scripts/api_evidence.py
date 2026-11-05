@@ -144,6 +144,22 @@ def main() -> None:
     row("GET /api/evidence/NOPE", "GET", "/api/evidence/NOPE")
 
     lines.append("")
+    lines.append("# image + thumbnail (HEAD and GET)")
+    for label, path, method in (
+        ("HEAD /api/evidence/EVD-CONTOH-A/image", "/api/evidence/EVD-CONTOH-A/image", "HEAD"),
+        ("HEAD /api/evidence/EVD-CONTOH-A/thumbnail", "/api/evidence/EVD-CONTOH-A/thumbnail", "HEAD"),
+        ("GET  /api/evidence/EVD-CONTOH-A/image", "/api/evidence/EVD-CONTOH-A/image", "GET"),
+        ("GET  /api/evidence/EVD-CONTOH-A/thumbnail", "/api/evidence/EVD-CONTOH-A/thumbnail", "GET"),
+        ("GET  /api/evidence/NGARANG/image (404)", "/api/evidence/NGARANG/image", "GET"),
+    ):
+        status, payload, headers = call(method, path)
+        detail = (
+            f"{status} {len(payload)}B {headers.get('content-type')} "
+            f"len={headers.get('content-length')} cc={headers.get('cache-control')}"
+        )
+        lines.append(f"{label:<52} {detail}")
+
+    lines.append("")
     lines.append("# settings")
     row("GET /api/settings", "GET", "/api/settings")
     row("PATCH /api/settings max_upload_mb=0", "PATCH", "/api/settings", body={"max_upload_mb": 0})

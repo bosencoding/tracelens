@@ -126,6 +126,14 @@ async def main() -> int:
                         primaryBg: btn ? getComputedStyle(btn).backgroundColor : null,
                         cardRadius: card ? getComputedStyle(card).borderRadius : null,
                         monoFont: mono ? getComputedStyle(mono).fontFamily.split(',')[0] : null,
+                        thumbLoaded: (() => {
+                          const el = document.querySelector('[data-testid="evidence-thumb-img"]');
+                          return el ? el.naturalWidth > 0 && el.complete : null;
+                        })(),
+                        thumbBox: (() => {
+                          const el = document.querySelector('[data-testid="evidence-thumb"]');
+                          return el ? Math.round(el.getBoundingClientRect().width) : null;
+                        })(),
                         text: document.body.innerText,
                       };
                     })()""")
@@ -144,6 +152,8 @@ async def main() -> int:
                                 for k in ("overflowX", "bodyFont", "surface", "primaryBg", "cardRadius")
                             },
                             "monoFont": (probe["monoFont"] or "").strip('"'),
+                            "thumbLoaded": probe["thumbLoaded"],
+                            "thumbBox": probe["thumbBox"],
                             "textChars": len(probe["text"]),
                             "head": " | ".join(line for line in probe["text"].split("\n") if line.strip())[
                                 :220
