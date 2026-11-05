@@ -1,4 +1,4 @@
-# TraceLens v2 API evidence — 2026-11-05 07:31 local
+# TraceLens v2 API evidence — 2026-11-05 08:12 local
 # reproduced by: cd backend && uv run python scripts/api_evidence.py
 GET /api/health                                      200 77B keys=status,engine,data,db
 GET /api/evidence                                    200 list[10]
@@ -6,12 +6,14 @@ GET /api/evidence/EVD-CONTOH-A                       200 4188B verdict=kuat conf
 GET /api/evidence/EVD-CONTOH-A/signature             200 2653B fp=28ff0b096ea5… q=64/64
 GET /api/evidence/EVD-CONTOH-A/matches               200 list[3] REF-A=1.0 REF-C=0.401 REF-B=0.3195
 #   nilai similarity mengikuti tabel referensi yang ada di DB saat dijalankan, bukan konstanta di kode
-POST /api/evidence (multipart jpeg)                  201 4141B verdict=kuat conf=0.9775
+POST /api/evidence (multipart jpeg)                  201 4185B verdict=kuat conf=0.9775
 
 # negative paths
 POST /api/evidence (.txt)                            415 119B code=unsupported_media_type detail=berkas 'tracelens-notjpeg.txt' bukan JPEG. Hanya .jpg/.jpeg 
 POST /api/evidence (.png)                            415 116B code=unsupported_media_type detail=berkas 'tracelens-fake.png' bukan JPEG. Hanya .jpg/.jpeg yan
-POST /api/evidence (21 MB → 413)                     413 72B code=file_too_large detail=berkas 21.0 MB melebihi batas 20 MB
+POST /api/evidence (51 MB → 413)                     413 72B code=file_too_large detail=berkas 51.0 MB melebihi batas 50 MB
+POST /api/evidence (21 MB jpeg → 201)                201 4190B verdict=kuat conf=0.9775
+DELETE /api/evidence/EVD-F170CC9154                  204 0B
 POST /api/evidence (no file)                         422 105B code=validation_error detail=validasi gagal pada field 'file': Field required
 GET /api/evidence/NOPE                               404 58B code=not_found detail=bukti NOPE tidak ditemukan
 DELETE /api/evidence/EVD-7A464A6763                  204 0B

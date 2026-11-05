@@ -37,4 +37,5 @@ export const api = {
   remove: (id: string) => call<void>(`/api/evidence/${id}`, { method: 'DELETE' }),
 }
 
-export const MAX_BYTES = 20 * 1024 * 1024
+export const MAX_MB = 50
+export const MAX_BYTES = MAX_MB * 1024 * 1024

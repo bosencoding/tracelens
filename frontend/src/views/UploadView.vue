@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
-import { api, ApiError, MAX_BYTES } from '../api'
+import { api, ApiError, MAX_BYTES, MAX_MB } from '../api'
 import type { Evidence } from '../types'
 
 const router = useRouter()
@@ -49,7 +49,7 @@ function clientCheck(file: File): string | null {
   const okExt = /\.(jpe?g)$/i.test(file.name)
   const okType = ['image/jpeg', 'image/jpg'].includes(file.type)
   if (!okExt || !okType) return `"${file.name}" bukan JPEG. Hanya .jpg/.jpeg yang diterima.`
-  if (file.size > MAX_BYTES) return `"${file.name}" ${fmtSize(file.size)} melebihi batas 20 MB.`
+  if (file.size > MAX_BYTES) return `"${file.name}" ${fmtSize(file.size)} melebihi batas ${MAX_MB} MB.`
   if (file.size === 0) return `"${file.name}" kosong.`
   return null
 }
@@ -136,7 +136,7 @@ onMounted(refresh)
           {{ busy ? 'Membaca signature…' : 'Tarik JPEG ke sini atau klik untuk memilih' }}
         </span>
         <span class="font-mono text-code-sm text-on-surface-variant">
-          .jpg / .jpeg · maksimal 20 MB · satu berkas
+          .jpg / .jpeg · maksimal {{ MAX_MB }} MB · satu berkas
         </span>
         <span class="btn-primary pointer-events-none mt-2">Pilih berkas JPEG</span>
       </label>

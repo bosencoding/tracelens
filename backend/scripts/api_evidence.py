@@ -122,8 +122,24 @@ def main() -> None:
     row("POST /api/evidence (.png)", "POST", "/api/evidence", files={"file": ("file", png, "image/png")})
     big = Path("/tmp/tracelens-big.jpg")
     if not big.exists():
-        big.write_bytes(b"\xff\xd8\xff" + b"\x00" * (21 * 1024 * 1024))
-    row("POST /api/evidence (21 MB → 413)", "POST", "/api/evidence", files={"file": ("file", big, "image/jpeg")})
+        big.write_bytes(b"\xff\xd8\xff" + b"\x00" * (51 * 1024 * 1024))
+    row("POST /api/evidence (51 MB → 413)", "POST", "/api/evidence", files={"file": ("file", big, "image/jpeg")})
+
+    # a real JPEG padded past the old 20 MB limit: must now be accepted (limit is 50 MB)
+    medium = Path("/tmp/tracelens-21mb.jpg")
+    if not medium.exists() and SAMPLE.exists():
+        raw = SAMPLE.read_bytes()
+        medium.write_bytes(raw + b"\x00" * (21 * 1024 * 1024 - len(raw)))
+    if medium.exists():
+        accepted = row(
+            "POST /api/evidence (21 MB jpeg → 201)",
+            "POST",
+            "/api/evidence",
+            files={"file": ("file", medium, "image/jpeg")},
+        )
+        if accepted.get("id"):
+            status, payload, headers = call("DELETE", f"/api/evidence/{accepted['id']}")
+            lines.append(f"{'DELETE /api/evidence/' + accepted['id']:<52} {describe(status, payload, headers)}")
     row("POST /api/evidence (no file)", "POST", "/api/evidence")
     row("GET /api/evidence/NOPE", "GET", "/api/evidence/NOPE")
 

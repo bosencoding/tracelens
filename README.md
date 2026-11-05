@@ -45,14 +45,14 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 
 | where | port | vars |
 |---|---|---|
-| API | 8001 | `MAX_UPLOAD_MB` (default 20), `DB_PATH`, `UPLOAD_DIR`, `CORS_ORIGINS` — all optional, defaults work, no `.env` needed |
+| API | 8001 | `MAX_UPLOAD_MB` (default 50), `DB_PATH`, `UPLOAD_DIR`, `CORS_ORIGINS` — all optional, defaults work, no `.env` needed |
 | Vite dev | 5173 | `VITE_API_BASE` (default `http://localhost:8001`) |
 
 ## Routes
 
 | route | contents |
 |---|---|
-| `/` | drop zone (`.jpg/.jpeg`, max 20 MB) + saved-evidence list with verdict and delete |
+| `/` | drop zone (`.jpg/.jpeg`, max 50 MB) + saved-evidence list with verdict and delete |
 | `/hasil/:id` | verdict card + 4 tabs: EXIF · Tabel Kuantisasi · Jejak Edit · Ringkasan |
 | `/laporan/:id` | print document (`@media print` drops nav/buttons), disclaimer + method limits |
 | anything else | explicit "halaman tidak ditemukan" card, never a blank page |
@@ -61,7 +61,7 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 
 | method | path | notes |
 |---|---|---|
-| POST | `/api/evidence` | multipart `file`; 415 for non-JPEG, 413 for >20 MB, 422 for empty/unreadable |
+| POST | `/api/evidence` | multipart `file`; 415 for non-JPEG, 413 for >50 MB, 422 for empty/unreadable |
 | GET | `/api/evidence` | history, newest first |
 | GET | `/api/evidence/{id}` | evidence + signature + top-3 matches |
 | GET | `/api/evidence/{id}/signature` | EXIF, qtable pair, fingerprint hex, encoder info, traces, component scores |
@@ -112,9 +112,9 @@ second run reports existing ids as `tetap` and writes nothing unless `--update` 
 `--dry-run` writes nothing at all — it will not even create the database file. Seed rows
 `REF-A/B/C` are untouched.
 
-**No size cap by default.** A reference import is not an API upload, so `MAX_UPLOAD_MB` (20 MB)
+**No size cap by default.** A reference import is not an API upload, so `MAX_UPLOAD_MB` (50 MB)
 does not apply: real camera files run 40 MB and bigger (DJI 36–39 MB, Hasselblad 44 MB in the
-dpreview set) and a 20 MB cap silently drops whole brands. `--max-mb N` sets a cap when you want
+dpreview set) and any upload-sized cap silently drops whole brands. `--max-mb N` sets a cap when you want
 one; `--max-mb 0` (default) means unlimited.
 
 **Normalisation.** EXIF strings arrive NUL-padded (`Sigma BF\x00\x00`) or space-padded

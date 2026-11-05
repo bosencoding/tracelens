@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     db_path: Path = DATA / "tracelens.db"
     upload_dir: Path = DATA / "uploads"
-    max_upload_mb: int = 20
+    max_upload_mb: int = 50
 
     @property
     def max_bytes(self) -> int:
