@@ -11,6 +11,16 @@ Acuan: `/Users/mashandri/OpenBot/Shared/PRNU-TraceLens/PLAN.md` (v2). Owner uji:
 | A5 | kandidat | bandingkan dengan `GET /api/evidence/{id}/matches` | tepat 3 kandidat, similarity menurun, jumlah = isi tabel `reference_cameras` |
 | A6 | laporan | `/laporan/:id`, print preview | nav/tombol hilang saat print, disclaimer "data sintetis" + batasan metode tercetak, tata letak tidak terpotong |
 | A7 | API | curl: id tak dikenal, mime salah, body salah, OPTIONS, id studi lain | 404 `{detail, code}`; 415 mime salah; 413 untuk >50 MB; 422 dengan nama field; CORS `access-control-allow-origin: http://localhost:5173`; tanpa traceback; id studi lain → 404/403 tanpa bocor baris |
+| S1 | halaman settings | buka `/pengaturan` | form tampil, token sesuai (A2), nilai awal = batas aktif |
+| S2 | simpan nilai | PATCH 100 lalu GET | `GET /api/settings` = 100; reload halaman tetap 100 |
+| S3 | efek ke unggahan | set 100 → unggah 60 MB; set 10 → unggah 60 MB | 201 saat batas 100; 413 `file_too_large` saat batas 10 |
+| S4 | validasi | PATCH 0, -5, "abc", 501 | 422 dengan nama field, nilai lama tidak berubah |
+| S5 | tahan restart | restart backend, GET settings | nilai terakhir masih berlaku |
+| S6 | klien ikut API | set batas 5 MB, pilih file 8 MB | ditolak di klien dengan angka dari API (bukan hardcode) |
+| B1 | thumbnail tampil | buka `/hasil/:id` | foto tampil dengan rasio tetap (tidak ada layout shift), label nama file + dimensi + ukuran, tautan "Lihat ukuran penuh" membuka `/api/evidence/{id}/image` |
+| B2 | endpoint gambar | `curl -I /api/evidence/{id}/image` dan `/thumbnail` | 200 `image/jpeg`, content-length masuk akal, `Cache-Control` di thumbnail; id ngawur → 404 `{detail, code}` |
+| B3 | bukti tidak diubah | bandingkan `sha256` file di `upload_dir` dengan kolom `sha256` DB, sebelum dan sesudah memanggil `/thumbnail` | identik; tidak ada file asli yang ditimpa, tidak ada re-encode |
+| B4 | gagal dengan rapi | hapus sementara file di disk (uji di DB `/tmp`, bukan proyek) | halaman hasil tetap render, pratinjau menampilkan pesan "tidak tersedia", bukan blank/500 |
 | A8 | tanpa rahasia + DB lokal | `grep -ri "service_role\|SUPABASE\|api_key" dist/` + devtools network + localStorage; `ls data/*.db` | tidak ada key/token di bundle, storage, atau request browser; DB = satu file SQLite lokal, tidak ada panggilan DB keluar |
 
 Tidak diuji di v2 (dipotong dari goal): `/bulk`, klaster, tab ELA/DCT/Hex, PCE/SNR/PRNU, seal ECDSA, PDF server-side, auth.
