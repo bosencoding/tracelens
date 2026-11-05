@@ -103,15 +103,39 @@ cd backend
 uv run python -m tools.import_reference --dir ~/datasets/SOCRatES --label-prefix soc --dry-run
 uv run python -m tools.import_reference --dir ~/datasets/SOCRatES --label-prefix soc
 uv run python -m tools.import_reference --list sidecar.csv --update   # path per line
+uv run python -m tools.import_reference --dir ~/datasets/x --max-mb 60 # opt-in size cap
 ```
 
 Groups by EXIF `Make`+`Model`, takes the per-position median of each quantization table,
 labels the row `<prefix> <make> <model>`, id `REF-<sha1(make|model)[:8]>`. Idempotent: a
 second run reports existing ids as `tetap` and writes nothing unless `--update` is passed.
-Files without Make/Model land in a `TANPA-EXIF/…` group and are reported as a warning;
-unreadable, over the upload limit (`MAX_UPLOAD_MB`, default 20) or single-table (grayscale)
-files are skipped, listed, and counted as `berkas_dilewati=`, never fatal. `--dry-run` writes
-nothing at all — it will not even create the database file. Seed rows `REF-A/B/C` are untouched.
+`--dry-run` writes nothing at all — it will not even create the database file. Seed rows
+`REF-A/B/C` are untouched.
+
+**No size cap by default.** A reference import is not an API upload, so `MAX_UPLOAD_MB` (20 MB)
+does not apply: real camera files run 40 MB and bigger (DJI 36–39 MB, Hasselblad 44 MB in the
+dpreview set) and a 20 MB cap silently drops whole brands. `--max-mb N` sets a cap when you want
+one; `--max-mb 0` (default) means unlimited.
+
+**Normalisation.** EXIF strings arrive NUL-padded (`Sigma BF\x00\x00`) or space-padded
+(`PENTAX K-3 Mark III   `). Make/model are stripped of NULs and collapsed to single spaces, and
+grouping compares casefolded text, so padding or case never splits one camera into two rows; the
+label keeps the original spelling. Different model codes stay separate on purpose (DJI `FC8282`
+vs `FC8284` are different bodies).
+
+**Never silently a camera.** Files with no Make/Model are labelled `TANPA-EXIF/<folder>`, and
+lab-scanner EXIF (`NORITSU`, `FRONTIER`, `QSS`, `EZ Controller`) is labelled `SCAN/<make> <model>`;
+both carry a `what_if` that says the row is not a camera sensor, and the run ends with a summary
+line plus a warning per kind:
+
+```
+file=100 grup=21 berkas_dilewati=0 baru=21 | kamera=18 scan=1 tanpa-exif=2
+```
+
+Unreadable or single-table (grayscale) files are skipped, listed with the reason, and counted as
+`berkas_dilewati=`, never fatal. Note that two cameras whose JPEG pipeline shares one encoder
+setting produce the *same* median table and therefore the same fingerprint — tables identify the
+pipeline, not the body; the label is the only thing that distinguishes those rows.
 
 EXIF and quantization tables are read through `app.analyze.identity()` / `qtable_pair()`, the
 same functions the upload analyzer uses, so an importer row means what the app means by a table.
