@@ -15,10 +15,17 @@ APP_VERSION = "2.1.0"
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 
-def _payload() -> AppSettings:
+def _is_loopback(request: Request) -> bool:
+    return (request.client.host if request.client else "") in LOOPBACK
+
+
+def _payload(request: Request) -> AppSettings:
+    """Absolute paths (and with them the username) only go to callers on this machine."""
+    path = settings().db_path
     return AppSettings(
         max_upload_mb=runtime_settings.max_upload_mb(),
-        db_path=str(settings().db_path),
+        db_file=path.name,
+        db_path=str(path) if _is_loopback(request) else None,
         evidence_count=db.row("SELECT COUNT(*) AS n FROM evidence")["n"],
         app_version=APP_VERSION,
     )
@@ -38,12 +45,12 @@ def _require_local(request: Request) -> None:
 
 
 @router.get("", response_model=AppSettings)
-def read_settings() -> AppSettings:
-    return _payload()
+def read_settings(request: Request) -> AppSettings:
+    return _payload(request)
 
 
 @router.patch("", response_model=AppSettings)
 def update_settings(body: SettingsPatch, request: Request) -> AppSettings:
     _require_local(request)
     runtime_settings.set_int(runtime_settings.MAX_UPLOAD_KEY, body.max_upload_mb)
-    return _payload()
+    return _payload(request)

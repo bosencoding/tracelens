@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import { api, ApiError } from '../api'
@@ -101,7 +101,19 @@ async function remove(id: string) {
   }
 }
 
-onMounted(refresh)
+function refreshIfVisible() {
+  if (document.visibilityState === 'visible' && !busy.value) void refresh()
+}
+
+onMounted(() => {
+  void refresh()
+  window.addEventListener('focus', refreshIfVisible)
+  document.addEventListener('visibilitychange', refreshIfVisible)
+})
+onUnmounted(() => {
+  window.removeEventListener('focus', refreshIfVisible)
+  document.removeEventListener('visibilitychange', refreshIfVisible)
+})
 </script>
 
 <template>

@@ -132,8 +132,18 @@ onMounted(load)
         <span class="kicker text-[10px]">INFO RUNTIME (BACA-SAJA)</span>
         <dl class="mt-3 divide-y divide-outline-variant/60">
           <div class="flex flex-wrap items-center justify-between gap-2 py-2">
-            <dt class="text-body-sm text-on-surface-variant">Path database</dt>
+            <dt class="text-body-sm text-on-surface-variant">Berkas database</dt>
+            <dd class="break-all font-mono text-label-md tabular">{{ settings?.db_file }}</dd>
+          </div>
+          <div v-if="settings?.db_path" class="flex flex-wrap items-center justify-between gap-2 py-2">
+            <dt class="text-body-sm text-on-surface-variant">Path lengkap (loopback)</dt>
             <dd class="break-all font-mono text-label-md tabular">{{ settings?.db_path }}</dd>
+          </div>
+          <div v-else class="py-2">
+            <p class="text-code-sm text-on-surface-variant">
+              Path lengkap hanya dikirim ke pemanggil dari mesin ini; dari jaringan hanya nama
+              berkas.
+            </p>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-2 py-2">
             <dt class="text-body-sm text-on-surface-variant">Jumlah evidence</dt>

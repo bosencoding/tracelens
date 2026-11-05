@@ -70,7 +70,7 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 | GET/HEAD | `/api/evidence/{id}/image` | original bytes, `image/jpeg`, correct `Content-Length`, `ETag` = file sha256; 410 if the file vanished |
 | GET/HEAD | `/api/evidence/{id}/thumbnail` | ≤480 px JPEG built per request (EXIF orientation honoured), `Cache-Control: private, max-age=3600`, `ETag`, 304 on `If-None-Match`; no derivative file written |
 | DELETE | `/api/evidence/{id}` | 204, removes row and stored file |
-| GET | `/api/settings` | `{max_upload_mb, db_path, evidence_count, app_version}` |
+| GET | `/api/settings` | `{max_upload_mb, db_file, db_path, evidence_count, app_version}` — `db_path` (absolute) only for loopback callers, otherwise `null` |
 | PATCH | `/api/settings` | body `{max_upload_mb}` 1–500; 422 with `fields:["max_upload_mb"]`; loopback/CORS-origin only, else 403 |
 
 Errors are uniform `{detail, code}` (`fields` on 422). CORS allows `http://localhost:5173`.
@@ -101,9 +101,14 @@ SQLite `settings` table (`key`, `value`, `updated_at`) and is the single source 
   bundle.
 - Range is 1–500 MB; `0`, `501`, `"abc"` and a missing field all return 422 with
   `fields: ["max_upload_mb"]`.
+- The upload page and the evidence list refetch on window `focus` / `visibilitychange`, so a limit
+  changed in `/pengaturan` (or a row deleted elsewhere) shows up without a reload.
 
 **Security (no auth in this app).** `PATCH /api/settings` is accepted only from loopback
-(`127.0.0.1`, `::1`) or an allowed CORS origin; anything else gets 403 `{detail, code}`. That stops
+(`127.0.0.1`, `::1`) or an allowed CORS origin; anything else gets 403 `{detail, code}`.
+`GET /api/settings` always returns `db_file` (basename); the absolute `db_path` — which carries the
+username and project layout — is included only when the request comes from loopback, so a LAN caller
+sees `"db_path": null`. That stops
 a random machine on the LAN from changing the limit, but the `Origin` header is spoofable by
 non-browser clients, so it is not real authorisation — anyone who can reach the port can still
 `GET` the settings, and a hostile local process is out of scope. Add auth before exposing this

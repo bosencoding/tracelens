@@ -81,7 +81,8 @@ class MatchOut(BaseModel):
 
 class AppSettings(BaseModel):
     max_upload_mb: int
-    db_path: str
+    db_file: str
+    db_path: str | None = None  # absolute path, loopback callers only
     evidence_count: int
     app_version: str
 

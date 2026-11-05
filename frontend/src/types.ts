@@ -72,7 +72,8 @@ export interface Match {
 
 export interface AppSettings {
   max_upload_mb: number
-  db_path: string
+  db_file: string
+  db_path: string | null
   evidence_count: number
   app_version: string
 }
