@@ -1,7 +1,8 @@
-# TraceLens v2 API evidence — 2026-11-05 08:12 local
+# TraceLens v2 API evidence — 2026-11-05 08:22 local
+# base: http://127.0.0.1:8002 (uji memakai DB sementara /tmp/tl-settings.db; DB proyek tidak disentuh)
 # reproduced by: cd backend && uv run python scripts/api_evidence.py
 GET /api/health                                      200 77B keys=status,engine,data,db
-GET /api/evidence                                    200 list[10]
+GET /api/evidence                                    200 list[8]
 GET /api/evidence/EVD-CONTOH-A                       200 4188B verdict=kuat conf=0.9775
 GET /api/evidence/EVD-CONTOH-A/signature             200 2653B fp=28ff0b096ea5… q=64/64
 GET /api/evidence/EVD-CONTOH-A/matches               200 list[3] REF-A=1.0 REF-C=0.401 REF-B=0.3195
@@ -16,6 +17,11 @@ POST /api/evidence (21 MB jpeg → 201)                201 4190B verdict=kuat co
 DELETE /api/evidence/EVD-F170CC9154                  204 0B
 POST /api/evidence (no file)                         422 105B code=validation_error detail=validasi gagal pada field 'file': Field required
 GET /api/evidence/NOPE                               404 58B code=not_found detail=bukti NOPE tidak ditemukan
+
+# settings
+GET /api/settings                                    200 93B keys=max_upload_mb,db_path,evidence_count,app_version
+PATCH /api/settings max_upload_mb=0                  422 151B code=validation_error detail=validasi gagal pada field 'max_upload_mb': Input should be g
+PATCH /api/settings max_upload_mb=501                422 150B code=validation_error detail=validasi gagal pada field 'max_upload_mb': Input should be l
 DELETE /api/evidence/EVD-7A464A6763                  204 0B
 GET deleted id                                       404 68B code=not_found detail=bukti EVD-7A464A6763 tidak ditemukan
 

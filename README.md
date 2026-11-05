@@ -45,7 +45,7 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 
 | where | port | vars |
 |---|---|---|
-| API | 8001 | `MAX_UPLOAD_MB` (default 50), `DB_PATH`, `UPLOAD_DIR`, `CORS_ORIGINS` — all optional, defaults work, no `.env` needed |
+| API | 8001 | `MAX_UPLOAD_MB` (seed only, default 50), `DB_PATH`, `UPLOAD_DIR`, `CORS_ORIGINS` — all optional, defaults work, no `.env` needed |
 | Vite dev | 5173 | `VITE_API_BASE` (default `http://localhost:8001`) |
 
 ## Routes
@@ -55,6 +55,7 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 | `/` | drop zone (`.jpg/.jpeg`, max 50 MB) + saved-evidence list with verdict and delete |
 | `/hasil/:id` | verdict card + 4 tabs: EXIF · Tabel Kuantisasi · Jejak Edit · Ringkasan |
 | `/laporan/:id` | print document (`@media print` drops nav/buttons), disclaimer + method limits |
+| `/pengaturan` | runtime settings: upload limit (1–500 MB) + read-only info (db path, evidence count, version) |
 | anything else | explicit "halaman tidak ditemukan" card, never a blank page |
 
 ## API
@@ -67,8 +68,30 @@ Open <http://localhost:5173>. Production build: `cd frontend && npm run build` �
 | GET | `/api/evidence/{id}/signature` | EXIF, qtable pair, fingerprint hex, encoder info, traces, component scores |
 | GET | `/api/evidence/{id}/matches` | 3 candidates, similarity descending |
 | DELETE | `/api/evidence/{id}` | 204, removes row and stored file |
+| GET | `/api/settings` | `{max_upload_mb, db_path, evidence_count, app_version}` |
+| PATCH | `/api/settings` | body `{max_upload_mb}` 1–500; 422 with `fields:["max_upload_mb"]`; loopback/CORS-origin only, else 403 |
 
 Errors are uniform `{detail, code}` (`fields` on 422). CORS allows `http://localhost:5173`.
+
+## Runtime settings
+
+`GET /api/settings` and `PATCH /api/settings` back the `/pengaturan` page. The value lives in the
+SQLite `settings` table (`key`, `value`, `updated_at`) and is the single source of truth:
+
+- `MAX_UPLOAD_MB` from the environment only **seeds** a database that has no row yet; after that a
+  UI change wins and survives a restart (the table is created by the idempotent schema on boot).
+- `POST /api/evidence` reads the limit from the table, so the 413 message always quotes the active
+  number, and the upload page reads the same value for its client-side check — no constant in the
+  bundle.
+- Range is 1–500 MB; `0`, `501`, `"abc"` and a missing field all return 422 with
+  `fields: ["max_upload_mb"]`.
+
+**Security (no auth in this app).** `PATCH /api/settings` is accepted only from loopback
+(`127.0.0.1`, `::1`) or an allowed CORS origin; anything else gets 403 `{detail, code}`. That stops
+a random machine on the LAN from changing the limit, but the `Origin` header is spoofable by
+non-browser clients, so it is not real authorisation — anyone who can reach the port can still
+`GET` the settings, and a hostile local process is out of scope. Add auth before exposing this
+service beyond your machine.
 
 ## How the numbers are produced (no client literals)
 

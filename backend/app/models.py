@@ -79,6 +79,17 @@ class MatchOut(BaseModel):
     explanation: str
 
 
+class AppSettings(BaseModel):
+    max_upload_mb: int
+    db_path: str
+    evidence_count: int
+    app_version: str
+
+
+class SettingsPatch(BaseModel):
+    max_upload_mb: int = Field(ge=1, le=500)
+
+
 class EvidenceOut(BaseModel):
     id: str
     filename: str

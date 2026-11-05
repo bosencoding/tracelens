@@ -143,6 +143,12 @@ def main() -> None:
     row("POST /api/evidence (no file)", "POST", "/api/evidence")
     row("GET /api/evidence/NOPE", "GET", "/api/evidence/NOPE")
 
+    lines.append("")
+    lines.append("# settings")
+    row("GET /api/settings", "GET", "/api/settings")
+    row("PATCH /api/settings max_upload_mb=0", "PATCH", "/api/settings", body={"max_upload_mb": 0})
+    row("PATCH /api/settings max_upload_mb=501", "PATCH", "/api/settings", body={"max_upload_mb": 501})
+
     if uploaded.get("id"):
         new_id = uploaded["id"]
         status, payload, headers = call("DELETE", f"/api/evidence/{new_id}")

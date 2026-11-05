@@ -26,6 +26,7 @@ ROUTES = {
     "upload": "/",
     "hasil": "/hasil/EVD-CONTOH-A",
     "laporan": "/laporan/EVD-CONTOH-A",
+    "pengaturan": "/pengaturan",
     "unknown": "/tidak-ada",
 }
 VIEWPORTS = [(1440, 900), (390, 844)]

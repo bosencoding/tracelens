@@ -70,6 +70,13 @@ export interface Match {
   explanation: string
 }
 
+export interface AppSettings {
+  max_upload_mb: number
+  db_path: string
+  evidence_count: number
+  app_version: string
+}
+
 export interface Evidence {
   id: string
   filename: string

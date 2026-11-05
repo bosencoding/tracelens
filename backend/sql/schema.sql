@@ -58,3 +58,10 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 
 CREATE INDEX IF NOT EXISTS evidence_uploaded_idx ON evidence(uploaded_at DESC);
+
+-- Runtime settings (editable from the UI). env only seeds the first value.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

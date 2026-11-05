@@ -54,6 +54,17 @@ const currentId = computed(() => (route.params.id as string) || '')
             <AppIcon name="scan" :size="16" /> Hasil
           </RouterLink>
           <RouterLink
+            to="/pengaturan"
+            class="flex items-center gap-2 rounded-control px-3 py-2 text-body-sm font-semibold transition"
+            :class="
+              route.name === 'settings'
+                ? 'bg-surface-container-low text-primary'
+                : 'text-on-surface-variant hover:bg-surface-container-low/60 hover:text-on-surface'
+            "
+          >
+            <AppIcon name="gear" :size="16" /> Pengaturan
+          </RouterLink>
+          <RouterLink
             v-if="currentId"
             :to="`/laporan/${currentId}`"
             class="flex items-center gap-2 rounded-control px-3 py-2 text-body-sm font-semibold transition"

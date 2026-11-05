@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import Response
 from PIL import Image, UnidentifiedImageError
 
-from . import analyze, db
+from . import analyze, db, runtime_settings
 from .config import settings
 from .errors import ApiError, NotFound, TooLarge, UnsupportedMedia
 from .models import (
@@ -98,11 +98,12 @@ async def upload(file: UploadFile = File(...)) -> EvidenceDetail:
         )
 
     raw = await file.read()
-    limit = settings().max_bytes
+    limit_mb = runtime_settings.max_upload_mb()
+    limit = limit_mb * 1024 * 1024
     if len(raw) == 0:
         raise ApiError("berkas kosong", "empty_file", 422)
     if len(raw) > limit:
-        raise TooLarge(f"berkas {len(raw) / 1024 / 1024:.1f} MB melebihi batas {limit // 1024 // 1024} MB")
+        raise TooLarge(f"berkas {len(raw) / 1024 / 1024:.1f} MB melebihi batas {limit_mb} MB")
 
     digest = hashlib.sha256(raw).hexdigest()
     evidence_id = f"EVD-{digest[:10].upper()}"

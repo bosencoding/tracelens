@@ -1,4 +1,4 @@
-import type { Evidence, EvidenceDetail, Match, Signature } from './types'
+import type { AppSettings, Evidence, EvidenceDetail, Match, Signature } from './types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8001'
 
@@ -35,7 +35,11 @@ export const api = {
   signature: (id: string) => call<Signature>(`/api/evidence/${id}/signature`),
   matches: (id: string) => call<Match[]>(`/api/evidence/${id}/matches`),
   remove: (id: string) => call<void>(`/api/evidence/${id}`, { method: 'DELETE' }),
+  settings: () => call<AppSettings>('/api/settings'),
+  updateSettings: (maxUploadMb: number) =>
+    call<AppSettings>('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_upload_mb: maxUploadMb }),
+    }),
 }
-
-export const MAX_MB = 50
-export const MAX_BYTES = MAX_MB * 1024 * 1024

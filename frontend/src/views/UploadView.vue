@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
-import { api, ApiError, MAX_BYTES, MAX_MB } from '../api'
+import { api, ApiError } from '../api'
 import type { Evidence } from '../types'
 
 const router = useRouter()
@@ -11,6 +11,7 @@ const error = ref('')
 const busy = ref(false)
 const dragging = ref(false)
 const loading = ref(true)
+const limitMb = ref<number | null>(null)
 
 const fmtSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.round(bytes / 1024)} KB`
@@ -37,7 +38,9 @@ const total = computed(() => items.value.length)
 
 async function refresh() {
   try {
-    items.value = await api.list()
+    const [list, settings] = await Promise.all([api.list(), api.settings()])
+    items.value = list
+    limitMb.value = settings.max_upload_mb
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'gagal memuat riwayat'
   } finally {
@@ -49,7 +52,9 @@ function clientCheck(file: File): string | null {
   const okExt = /\.(jpe?g)$/i.test(file.name)
   const okType = ['image/jpeg', 'image/jpg'].includes(file.type)
   if (!okExt || !okType) return `"${file.name}" bukan JPEG. Hanya .jpg/.jpeg yang diterima.`
-  if (file.size > MAX_BYTES) return `"${file.name}" ${fmtSize(file.size)} melebihi batas ${MAX_MB} MB.`
+  if (limitMb.value !== null && file.size > limitMb.value * 1024 * 1024) {
+    return `"${file.name}" ${fmtSize(file.size)} melebihi batas ${limitMb.value} MB.`
+  }
   if (file.size === 0) return `"${file.name}" kosong.`
   return null
 }
@@ -136,7 +141,7 @@ onMounted(refresh)
           {{ busy ? 'Membaca signature…' : 'Tarik JPEG ke sini atau klik untuk memilih' }}
         </span>
         <span class="font-mono text-code-sm text-on-surface-variant">
-          .jpg / .jpeg · maksimal {{ MAX_MB }} MB · satu berkas
+          .jpg / .jpeg · maksimal {{ limitMb ?? '…' }} MB · satu berkas
         </span>
         <span class="btn-primary pointer-events-none mt-2">Pilih berkas JPEG</span>
       </label>

@@ -7,13 +7,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db, errors, routes_evidence
+from . import db, errors, routes_evidence, routes_settings, runtime_settings
 from .config import settings
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    runtime_settings.seed_defaults()
     yield
 
 
@@ -31,12 +32,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().origin_list,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
 errors.install(app)
 app.include_router(routes_evidence.router)
+app.include_router(routes_settings.router)
 
 
 @app.get("/api/health")
