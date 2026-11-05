@@ -91,7 +91,11 @@ def estimate_quality(luma: list[int], chroma: list[int]) -> tuple[int, float]:
     return best[0], round(best[1] / 128, 2)
 
 
-def _exif_dict(img: Image.Image, raw: bytes) -> tuple[dict[str, Any], Any]:
+def identity(img: Image.Image) -> dict[str, Any]:
+    """EXIF identity of an opened image. Bytes are decoded, empty tags become None.
+
+    Public so tools (the dataset importer) read EXIF the same way the analyzer does.
+    """
     exif = img.getexif()
     out: dict[str, Any] = {}
     for key, (tag, _) in EXIF_TAGS.items():
@@ -104,9 +108,23 @@ def _exif_dict(img: Image.Image, raw: bytes) -> tuple[dict[str, Any], Any]:
         if isinstance(value, bytes):
             value = value.decode("utf-8", "replace").strip("\x00").strip()
         out[key] = value if value not in ("", None) else None
+    return out
 
-    thumbnail = _thumbnail_qtable(raw)
-    return out, thumbnail
+
+def qtable_pair(img: Image.Image) -> tuple[list[int], list[int], bool]:
+    """Luma and chroma quantization tables, plus whether the file carried both.
+
+    A grayscale JPEG has one table; the pair is completed with that same table, which is how
+    the analyzer already scores such files. `complete` tells tools if that fallback was used.
+    """
+    tables = img.quantization or {}
+    luma = list(tables.get(0, []))
+    chroma = list(tables.get(1, tables[0] if luma else []))
+    return luma, chroma, len(tables) >= 2 and bool(luma)
+
+
+def _exif_dict(img: Image.Image, raw: bytes) -> tuple[dict[str, Any], Any]:
+    return identity(img), _thumbnail_qtable(raw)
 
 
 def _thumbnail_qtable(raw: bytes) -> dict[str, Any]:
@@ -140,14 +158,12 @@ def _dt(value: str | None) -> datetime | None:
 def analyze(raw: bytes, references: list[dict]) -> dict:
     """Return the full signature payload plus the top-3 matches. Pure function of the bytes."""
     img = Image.open(io.BytesIO(raw))
-    tables = img.quantization or {}
     exif_raw = img.info.get("exif", b"")
     exif, thumb = _exif_dict(img, exif_raw)
     exif["has_thumbnail"] = thumb["present"]
     markers = jpeg_markers.scan(raw)
 
-    luma = list(tables.get(0, []))
-    chroma = list(tables.get(1, tables.get(0, [])))
+    luma, chroma, _ = qtable_pair(img)
     if not luma:
         luma = _standard_tables(75)[0]
         chroma = _standard_tables(75)[1]

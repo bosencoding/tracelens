@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     @property
     def max_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property

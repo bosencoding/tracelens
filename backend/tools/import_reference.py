@@ -6,12 +6,16 @@ Groups files by EXIF (make, model), picks a representative quantization-table pa
 
     uv run python -m tools.import_reference --dir ~/datasets/SOCRatES --dry-run
     uv run python -m tools.import_reference --list files.txt --label-prefix soc
+
+EXIF and table reading come from `app.analyze` (identity / qtable_pair), so the importer
+sees exactly the fields and tables the analyzer scores at upload time.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -19,46 +23,60 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from app import analyze, db, jpeg
+from app.config import settings
 
-MAX_BYTES = 20 * 1024 * 1024
 EXTS = {".jpg", ".jpeg"}
+COLUMNS = (
+    "id",
+    "label",
+    "make",
+    "model",
+    "encoder",
+    "note",
+    "qtable_luma",
+    "qtable_chroma",
+    "fingerprint_hex",
+    "subsampling",
+    "what_if",
+)
 
 
-def collect(args) -> tuple[list[Path], list[str]]:
+def collect(args) -> list[Path]:
     if args.list:
-        paths = [Path(line.strip()) for line in Path(args.list).read_text().splitlines() if line.strip()]
-        return paths, []
+        text = Path(args.list).read_text()
+        return [Path(line.strip()) for line in text.splitlines() if line.strip()]
     root = Path(args.dir).expanduser()
-    return sorted(p for p in root.rglob("*") if p.suffix.lower() in EXTS and p.is_file()), []
+    return sorted(p for p in root.rglob("*") if p.suffix.lower() in EXTS and p.is_file())
 
 
 def read_one(path: Path) -> dict | None:
+    """One file -> its identity and tables, or {'skip': reason}. Never raises."""
     try:
-        if path.stat().st_size > MAX_BYTES:
-            return {"skip": "lebih dari 20MB"}
+        if path.stat().st_size > settings().max_bytes:
+            return {"skip": f"lebih dari {settings().max_upload_mb} MB"}
         raw = path.read_bytes()
     except OSError as exc:
         return {"skip": f"tidak terbaca: {exc}"}
+
     try:
-        with Image.open(path) as img:
-            tables = img.quantization
-            exif = img.getexif()
-            if len(tables) < 2:
-                return {"skip": "bukan JPEG berwarna / tabel kuantisasi tidak lengkap"}
-            luma, chroma = list(tables[0]), list(tables[1])
+        with Image.open(io.BytesIO(raw)) as img:
+            exif = analyze.identity(img)
+            luma, chroma, complete = analyze.qtable_pair(img)
     except (OSError, UnidentifiedImageError) as exc:
         return {"skip": f"bukan JPEG terbaca: {exc}"}
-    make = (exif.get(0x010F) or "").strip()
-    model = (exif.get(0x0110) or "").strip()
-    scan = jpeg.scan(raw)
+    if not complete:
+        return {"skip": "bukan JPEG berwarna / tabel kuantisasi tidak lengkap"}
+
+    make = (exif.get("make") or "").strip()
+    model = (exif.get("model") or "").strip()
     quality, delta = analyze.estimate_quality(luma, chroma)
     return {
         "make": make or "TANPA-MAKE",
         "model": model or f"TANPA-EXIF/{path.parent.name}",
         "luma": luma,
         "chroma": chroma,
-        "subsampling": scan["subsampling"],
-        "encoder": f"libjpeg (tabel IJG q{quality})" if delta <= 2 else "tabel non-IJG (kamera/Adobe)",
+        "subsampling": jpeg.scan(raw)["subsampling"],
+        "encoder": (f"libjpeg (tabel IJG q{quality})" if delta <= 2 else "tabel non-IJG (kamera/Adobe)"),
     }
 
 
@@ -94,11 +112,10 @@ def build_rows(groups, prefix: str) -> list[dict]:
         subsampling = Counter(item["subsampling"] for item in items).most_common(1)[0][0]
         encoder = Counter(item["encoder"] for item in items).most_common(1)[0][0]
         digest = hashlib.sha1(f"{make}|{model}".lower().encode()).hexdigest()[:8].upper()
-        label = f"{prefix} {make} {model}".strip()
         rows.append(
             {
                 "id": f"REF-{digest}",
-                "label": label,
+                "label": f"{prefix} {make} {model}".strip(),
                 "make": make,
                 "model": model,
                 "encoder": encoder,
@@ -124,54 +141,40 @@ def main() -> int:
     parser.add_argument("--update", action="store_true", help="timpa baris dengan id yang sama")
     args = parser.parse_args()
 
-    files, _ = collect(args)
+    files = collect(args)
     if not files:
         print("tidak ada JPEG ditemukan", file=sys.stderr)
         return 1
+
     groups, skipped = group(files)
     rows = build_rows(groups, args.label_prefix)
 
-    db.init_db()
-    existing = {r["id"] for r in db.rows("SELECT id FROM reference_cameras")}
+    # dry-run must not create the database file either
+    db_ready = settings().db_path.exists()
+    if not args.dry_run and not db_ready:
+        db.init_db()
+        db_ready = True
+    existing = {r["id"] for r in db.rows("SELECT id FROM reference_cameras")} if db_ready else set()
 
-    plan = Counter()
+    plan: Counter = Counter()
     for row in rows:
-        state = "baru" if row["id"] not in existing else ("ditimpa" if args.update else "dilewati")
+        state = "baru" if row["id"] not in existing else ("ditimpa" if args.update else "tetap")
         plan[state] += 1
         print(
             f"{state:9} {row['id']:<16} {row['model']:<28} n={row['_samples']:<4} "
             f"{row['subsampling']:<8} {row['fingerprint_hex'][:12]}"
         )
         if state in {"baru", "ditimpa"} and not args.dry_run:
+            placeholders = ",".join("?" * len(COLUMNS))
             db.execute(
-                """INSERT INTO reference_cameras
-                   (id,label,make,model,encoder,note,qtable_luma,qtable_chroma,fingerprint_hex,subsampling,what_if)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                   ON CONFLICT(id) DO UPDATE SET label=excluded.label,
-                     make=excluded.make, model=excluded.model,
-                     encoder=excluded.encoder, note=excluded.note, qtable_luma=excluded.qtable_luma,
-                     qtable_chroma=excluded.qtable_chroma, fingerprint_hex=excluded.fingerprint_hex,
-                     subsampling=excluded.subsampling, what_if=excluded.what_if""",
-                tuple(
-                    row[k]
-                    for k in (
-                        "id",
-                        "label",
-                        "make",
-                        "model",
-                        "encoder",
-                        "note",
-                        "qtable_luma",
-                        "qtable_chroma",
-                        "fingerprint_hex",
-                        "subsampling",
-                        "what_if",
-                    )
-                ),
+                f"INSERT INTO reference_cameras ({','.join(COLUMNS)}) VALUES ({placeholders})"
+                " ON CONFLICT(id) DO UPDATE SET "
+                + ", ".join(f"{c}=excluded.{c}" for c in COLUMNS if c != "id"),
+                tuple(row[column] for column in COLUMNS),
             )
 
     summary = " ".join(f"{k}={v}" for k, v in plan.items())
-    print(f"\nfile={len(files)} grup={len(rows)} dilewati={len(skipped)} {summary}")
+    print(f"\nfile={len(files)} grup={len(rows)} berkas_dilewati={len(skipped)} {summary}")
     for line in skipped[:10]:
         print(f"  lewat {line}")
     if any(row["make"] == "TANPA-MAKE" for row in rows):

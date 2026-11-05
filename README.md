@@ -107,9 +107,14 @@ uv run python -m tools.import_reference --list sidecar.csv --update   # path per
 
 Groups by EXIF `Make`+`Model`, takes the per-position median of each quantization table,
 labels the row `<prefix> <make> <model>`, id `REF-<sha1(make|model)[:8]>`. Idempotent: a
-second run skips existing ids unless `--update` is passed. Files without Make/Model land in a
-`TANPA-EXIF/…` group and are reported as a warning; unreadable or >20 MB files are skipped and
-counted, never fatal. Seed rows `REF-A/B/C` are untouched.
+second run reports existing ids as `tetap` and writes nothing unless `--update` is passed.
+Files without Make/Model land in a `TANPA-EXIF/…` group and are reported as a warning;
+unreadable, over the upload limit (`MAX_UPLOAD_MB`, default 20) or single-table (grayscale)
+files are skipped, listed, and counted as `berkas_dilewati=`, never fatal. `--dry-run` writes
+nothing at all — it will not even create the database file. Seed rows `REF-A/B/C` are untouched.
+
+EXIF and quantization tables are read through `app.analyze.identity()` / `qtable_pair()`, the
+same functions the upload analyzer uses, so an importer row means what the app means by a table.
 
 Caveat: only **camera-native JPEGs** carry the camera's own tables. RAW (e.g. RAISE `.NEF/.CR2`)
 must not be converted first — Pillow/libjpeg would write its own tables and you would fingerprint
