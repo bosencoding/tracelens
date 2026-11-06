@@ -10,12 +10,15 @@ from pathlib import Path
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import BaseModel
 
 from . import analyze, db, runtime_settings
 from .config import settings
 from .errors import ApiError, NotFound, TooLarge, UnsupportedMedia
 from .models import (
     EncoderInfo,
+    EnrichmentOut,
+    EnrichRequest,
     EvidenceDetail,
     EvidenceOut,
     MatchOut,
@@ -197,6 +200,174 @@ async def upload(file: UploadFile = File(...)) -> EvidenceDetail:
     return response
 
 
+class BatchUploadResult(BaseModel):
+    filename: str
+    status: str  # "success" | "failed"
+    id: str | None = None
+    error: str | None = None
+
+
+@router.post("/batch", response_model=list[BatchUploadResult], status_code=201)
+async def upload_batch(files: list[UploadFile] = File(...)) -> list[BatchUploadResult]:
+    """Batch upload: process multiple JPEG files sequentially."""
+    if len(files) > 50:
+        raise ApiError("maksimal 50 berkas per batch", "too_many_files", 422)
+    
+    results: list[BatchUploadResult] = []
+    limit_mb = runtime_settings.max_upload_mb()
+    limit = limit_mb * 1024 * 1024
+    
+    references = db.rows("select * from reference_cameras")
+    for ref in references:
+        ref["luma"] = db.loads(ref["qtable_luma"], [])
+        ref["chroma"] = db.loads(ref["qtable_chroma"], [])
+    
+    for file in files:
+        try:
+            # Validate file type
+            suffix = Path(file.filename or "").suffix.lower()
+            if (file.content_type or "") not in ALLOWED_MIME or suffix not in ALLOWED_EXT:
+                results.append(BatchUploadResult(
+                    filename=file.filename or "tanpa nama",
+                    status="failed",
+                    error=f"bukan JPEG. Hanya .jpg/.jpeg yang diterima."
+                ))
+                continue
+            
+            # Read file
+            raw = await file.read()
+            
+            # Validate size
+            if len(raw) == 0:
+                results.append(BatchUploadResult(
+                    filename=file.filename or "tanpa nama",
+                    status="failed",
+                    error="berkas kosong"
+                ))
+                continue
+            
+            if len(raw) > limit:
+                results.append(BatchUploadResult(
+                    filename=file.filename or "tanpa nama",
+                    status="failed",
+                    error=f"berkas {len(raw) / 1024 / 1024:.1f} MB melebihi batas {limit_mb} MB"
+                ))
+                continue
+            
+            # Validate image
+            try:
+                with Image.open(__import__("io").BytesIO(raw)) as probe:
+                    probe.verify()
+            except (UnidentifiedImageError, OSError) as exc:
+                results.append(BatchUploadResult(
+                    filename=file.filename or "tanpa nama",
+                    status="failed",
+                    error=f"tidak dapat dibaca sebagai JPEG: {exc}"
+                ))
+                continue
+            
+            # Check for duplicate
+            digest = hashlib.sha256(raw).hexdigest()
+            existing = db.row("select id from evidence where sha256 = ?", (digest,))
+            if existing:
+                results.append(BatchUploadResult(
+                    filename=file.filename or "tanpa nama",
+                    status="failed",
+                    error=f"duplikat (id: {existing['id']})"
+                ))
+                continue
+            
+            # Process file
+            evidence_id = f"EVD-{digest[:10].upper()}"
+            stored = Path(settings().upload_dir) / f"{evidence_id}.jpg"
+            stored.write_bytes(raw)
+            
+            result = analyze.analyze(raw, references)
+            verdict = result["verdict"]
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            
+            db.execute(
+                """insert or replace into evidence (id, filename, byte_size, mime_type, sha256, stored_path,
+                       uploaded_at, verdict_label, verdict_text, confidence, camera_guess, encoder_guess,
+                       width, height) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    evidence_id,
+                    file.filename or f"{evidence_id}.jpg",
+                    len(raw),
+                    "image/jpeg",
+                    digest,
+                    str(stored),
+                    now,
+                    verdict["label"],
+                    verdict["text"],
+                    verdict["confidence"],
+                    verdict["camera_guess"],
+                    verdict["encoder_guess"],
+                    result["meta"]["width"],
+                    result["meta"]["height"],
+                ),
+            )
+            signature = result["signature"]
+            db.execute(
+                """insert or replace into signatures (evidence_id, exif_json, qtable_luma, qtable_chroma,
+                       fingerprint_hex, subsampling, restart_interval, huffman_tables, app_markers,
+                       edit_traces, components, computed_at)
+                   values (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    evidence_id,
+                    db.dumps(signature["exif"]),
+                    db.dumps(signature["qtable"]["luma"]),
+                    db.dumps(signature["qtable"]["chroma"]),
+                    signature["fingerprint_hex"],
+                    signature["encoder"]["subsampling"],
+                    signature["encoder"]["restart_interval"],
+                    signature["encoder"]["huffman_tables"],
+                    db.dumps(
+                        {
+                            "guess": signature["encoder"]["guess"],
+                            "confidence": signature["encoder"]["confidence"],
+                            "note": signature["encoder"]["note"],
+                            "markers": signature["encoder"]["app_markers"],
+                        }
+                    ),
+                    db.dumps(signature["edit_traces"]),
+                    db.dumps(signature["components"]),
+                    now,
+                ),
+            )
+            db.execute("delete from matches where evidence_id = ?", (evidence_id,))
+            for match in result["matches"]:
+                db.execute(
+                    "insert into matches (evidence_id, rank, reference_id, similarity, explanation)"
+                    " values (?,?,?,?,?)",
+                    (
+                        evidence_id,
+                        match["rank"],
+                        match["reference_id"],
+                        match["similarity"],
+                        match["explanation"],
+                    ),
+                )
+            
+            # Auto-enrichment
+            analyze.auto_enrich_reference(result, raw)
+            
+            results.append(BatchUploadResult(
+                filename=file.filename or "tanpa nama",
+                status="success",
+                id=evidence_id
+            ))
+        
+        except Exception as exc:
+            results.append(BatchUploadResult(
+                filename=file.filename or "tanpa nama",
+                status="failed",
+                error=str(exc)
+            ))
+    
+    return results
+
+
 @router.get("", response_model=list[EvidenceOut])
 def list_evidence() -> list[EvidenceOut]:
     return [_out(row) for row in db.rows("select * from evidence order by uploaded_at desc, id desc")]
@@ -207,6 +378,83 @@ def detail(evidence_id: str) -> EvidenceDetail:
     row = _row(evidence_id)
     return EvidenceDetail(
         **_out(row).model_dump(), signature=_signature(evidence_id), matches=_matches(evidence_id)
+    )
+
+
+@router.post("/{evidence_id}/enrich", response_model=EnrichmentOut)
+def enrich(evidence_id: str, body: EnrichRequest) -> EnrichmentOut:
+    """Manual enrichment: add camera to reference when EXIF Make/Model is missing."""
+    from . import db
+    
+    # Get signature for this evidence
+    sig_row = db.row("SELECT * FROM signatures WHERE evidence_id = ?", (evidence_id,))
+    if sig_row is None:
+        raise NotFound(f"signature untuk {evidence_id} tidak ditemukan")
+    
+    make = body.make.strip()
+    model = body.model.strip()
+    
+    # Check if camera already exists
+    existing = db.row(
+        "SELECT id FROM reference_cameras WHERE make = ? AND model = ?",
+        (make, model)
+    )
+    if existing:
+        return EnrichmentOut(
+            added=False,
+            reason=f"kamera sudah ada di referensi (id: {existing['id']})"
+        )
+    
+    # Extract quantization tables and encoder info
+    luma = db.loads(sig_row["qtable_luma"], [])
+    chroma = db.loads(sig_row["qtable_chroma"], [])
+    subsampling = sig_row.get("subsampling", "4:2:0")
+    encoder_info = db.loads(sig_row["app_markers"], {})
+    encoder = encoder_info.get("guess", "unknown")
+    fingerprint_hex = sig_row.get("fingerprint_hex", "")
+    
+    if not luma or not chroma:
+        raise ApiError("quantization tables tidak valid", "invalid_qtable", 400)
+    
+    # Generate reference ID
+    digest = hashlib.sha1(f"{make}|{model}".casefold().encode()).hexdigest()[:8].upper()
+    ref_id = f"REF-{digest}"
+    
+    # Create label and note
+    label = f"Manual: {make} {model}"
+    note = f"Ditambahkan manual dari evidence {evidence_id}."
+    what_if = "Referensi ditambahkan manual. Verifikasi dengan sample tambahan disarankan."
+    
+    # Insert into reference_cameras
+    try:
+        db.execute(
+            """INSERT INTO reference_cameras 
+               (id, label, make, model, encoder, note, qtable_luma, qtable_chroma, 
+                fingerprint_hex, subsampling, what_if, is_auto_added)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (
+                ref_id,
+                label,
+                make,
+                model,
+                encoder,
+                note,
+                db.dumps(luma),
+                db.dumps(chroma),
+                fingerprint_hex,
+                subsampling,
+                what_if,
+            ),
+        )
+    except Exception as e:
+        raise ApiError(f"gagal menambahkan kamera: {e}", "db_error", 500)
+    
+    return EnrichmentOut(
+        added=True,
+        reference_id=ref_id,
+        label=label,
+        make=make,
+        model=model
     )
 
 

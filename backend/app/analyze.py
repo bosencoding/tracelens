@@ -183,6 +183,34 @@ def analyze(raw: bytes, references: list[dict]) -> dict:
     qtable_score = round(best["similarity"], 4) if best else 0.0
     encoder_score = {"kuat": 1.0, "sedang": 0.6, "lemah": 0.25}[encoder_confidence]
 
+    # EXIF-first verdict logic
+    exif_make = (exif.get("make") or "").strip()
+    exif_model = (exif.get("model") or "").strip()
+    exif_label = f"{exif_make} {exif_model}".strip() if exif_make and exif_model else ""
+    
+    # Check if EXIF model exists in reference cameras
+    exif_match = None
+    if exif_label:
+        for ref_match in scored:
+            if (ref_match.get("make", "").strip().lower() == exif_make.lower() and
+                ref_match.get("model", "").strip().lower() == exif_model.lower()):
+                exif_match = ref_match
+                break
+    
+    # Determine camera_guess based on priority
+    if exif_label:
+        # EXIF exists - use it as primary identity
+        if exif_match:
+            # EXIF model found in reference - use that match
+            camera_guess = exif_label
+        else:
+            # EXIF exists but not in reference - use EXIF as identity
+            camera_guess = exif_label
+            # Keep qtable-based confidence but note EXIF is primary
+    else:
+        # No EXIF - fall back to best qtable match
+        camera_guess = best["label"] if best else "tidak ada di tabel referensi"
+
     components = [
         {
             "key": "exif",
@@ -213,7 +241,12 @@ def analyze(raw: bytes, references: list[dict]) -> dict:
         },
     ]
     confidence = round(sum(c["contribution"] for c in components), 4)
-    label, text = _verdict(confidence, best["label"] if best else None, encoder_guess)
+    
+    # If EXIF match found, boost confidence to at least the match similarity
+    if exif_match:
+        confidence = round(max(exif_match["similarity"], confidence), 4)
+    
+    label, text = _verdict(confidence, camera_guess, encoder_guess, exif_label, exif_match is not None)
 
     return {
         "signature": {
@@ -237,7 +270,7 @@ def analyze(raw: bytes, references: list[dict]) -> dict:
             "label": label,
             "text": text,
             "confidence": confidence,
-            "camera_guess": best["label"] if best else "tidak ada di tabel referensi",
+            "camera_guess": camera_guess,
             "encoder_guess": encoder_guess,
         },
         "meta": {
@@ -473,22 +506,79 @@ def _exif_reason(exif: dict) -> str:
     return "Tidak ada tag kamera — EXIF dihapus atau tidak pernah ditulis."
 
 
-def _verdict(confidence: float, best_label: str | None, encoder: str) -> tuple[str, str]:
-    camera = best_label or "tidak ada di tabel referensi"
+def _verdict(
+    confidence: float,
+    camera_guess: str,
+    encoder: str,
+    exif_label: str = "",
+    exif_in_reference: bool = False,
+) -> tuple[str, str]:
+    """Generate verdict label and text.
+    
+    Args:
+        confidence: Overall confidence score
+        camera_guess: The camera identity to display
+        encoder: Encoder guess
+        exif_label: EXIF Make/Model if present
+        exif_in_reference: Whether EXIF model was found in reference cameras
+    """
+    if not camera_guess or camera_guess == "tidak ada di tabel referensi":
+        return (
+            "tidak dapat dipastikan",
+            "Metadata dan tabel kuantisasi tidak cukup untuk menetapkan kamera; "
+            "hanya encoder yang bisa ditegaskan.",
+        )
+    
+    # EXIF-based verdict
+    if exif_label:
+        if exif_in_reference:
+            # EXIF model found in reference - strong verdict
+            if confidence >= 0.75:
+                return (
+                    "kuat",
+                    f"EXIF mengidentifikasi {camera_guess} dan cocok dengan referensi. Encoder: {encoder}.",
+                )
+            if confidence >= 0.55:
+                return (
+                    "sedang",
+                    f"EXIF mengidentifikasi {camera_guess}, didukung oleh referensi. Encoder: {encoder}.",
+                )
+            return (
+                "lemah",
+                f"EXIF menyebut {camera_guess}, tetapi confidence rendah. Encoder: {encoder}.",
+            )
+        else:
+            # EXIF exists but not in reference - auto-enrichment will add it
+            if confidence >= 0.65:
+                return (
+                    "kuat",
+                    f"EXIF mengidentifikasi {camera_guess} (akan ditambahkan ke referensi). Encoder: {encoder}.",
+                )
+            if confidence >= 0.45:
+                return (
+                    "sedang",
+                    f"EXIF mengidentifikasi {camera_guess} (akan ditambahkan ke referensi). Encoder: {encoder}.",
+                )
+            return (
+                "lemah",
+                f"EXIF menyebut {camera_guess} tetapi tidak ada di referensi. Encoder: {encoder}.",
+            )
+    
+    # No EXIF - qtable-based verdict
     if confidence >= 0.75:
         return (
             "kuat",
-            f"Signature paling mungkin dari {camera} dengan encoder {encoder}.",
+            f"Signature paling mungkin dari {camera_guess} dengan encoder {encoder}.",
         )
     if confidence >= 0.55:
         return (
             "sedang",
-            f"Indikasi ke {camera} ({encoder}); bukti belum saling menguatkan penuh.",
+            f"Indikasi ke {camera_guess} ({encoder}); bukti belum saling menguatkan penuh.",
         )
     if confidence >= 0.45:
         return (
             "lemah",
-            f"Petunjuk ke {camera}, tetapi komponen saling bertentangan — perlakukan sebagai dugaan.",
+            f"Petunjuk ke {camera_guess}, tetapi komponen saling bertentangan — perlakukan sebagai dugaan.",
         )
     return (
         "tidak dapat dipastikan",
@@ -537,6 +627,18 @@ def auto_enrich_reference(
     
     if not luma or not chroma:
         return {"added": False, "reason": "quantization tables tidak valid"}
+    
+    # Check if fingerprint already exists (prevents duplicate entries with different EXIF)
+    existing_fp = db.rows(
+        "SELECT id, make, model FROM reference_cameras WHERE fingerprint_hex = ?",
+        (fingerprint_hex,)
+    )
+    
+    if existing_fp:
+        return {
+            "added": False, 
+            "reason": f"fingerprint sudah ada di referensi (id: {existing_fp[0]['id']}, {existing_fp[0]['make']} {existing_fp[0]['model']})"
+        }
     
     # Generate reference ID
     digest = hashlib.sha1(f"{make}|{model}".casefold().encode()).hexdigest()[:8].upper()

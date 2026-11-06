@@ -3,7 +3,15 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import { api, ApiError } from '../api'
-import type { Evidence } from '../types'
+import type { Evidence, ReferenceStats } from '../types'
+
+interface QueueItem {
+  file: File
+  status: 'pending' | 'uploading' | 'success' | 'failed'
+  evidenceId?: string
+  error?: string
+  thumbnailUrl?: string
+}
 
 const router = useRouter()
 const items = ref<Evidence[]>([])
@@ -13,6 +21,8 @@ const dragging = ref(false)
 const loading = ref(true)
 const limitMb = ref<number | null>(null)
 const brokenThumbs = ref<Set<string>>(new Set())
+const queue = ref<QueueItem[]>([])
+const referenceStats = ref<ReferenceStats | null>(null)
 
 const fmtSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${Math.round(bytes / 1024)} KB`
@@ -36,12 +46,24 @@ const verdictClass = (label: string) =>
         : 'pill-neutral'
 
 const total = computed(() => items.value.length)
+const queueCount = computed(() => queue.value.length)
+const queueSuccess = computed(() => queue.value.filter(q => q.status === 'success').length)
+const queueFailed = computed(() => queue.value.filter(q => q.status === 'failed').length)
+const lastUploadedId = computed(() => {
+  const success = queue.value.filter(q => q.status === 'success' && q.evidenceId)
+  return success.length > 0 ? success[success.length - 1].evidenceId : null
+})
 
 async function refresh() {
   try {
-    const [list, settings] = await Promise.all([api.list(), api.settings()])
+    const [list, settings, stats] = await Promise.all([
+      api.list(),
+      api.settings(),
+      api.getReferenceStats(),
+    ])
     items.value = list
     limitMb.value = settings.max_upload_mb
+    referenceStats.value = stats
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'gagal memuat riwayat'
   } finally {
@@ -60,20 +82,96 @@ function clientCheck(file: File): string | null {
   return null
 }
 
-async function upload(file: File) {
+function addFiles(fileList: FileList | File[]) {
   error.value = ''
-  const problem = clientCheck(file)
-  if (problem) {
-    error.value = problem
+  const files = Array.from(fileList)
+  
+  if (queue.value.length + files.length > 50) {
+    error.value = `Maksimal 50 berkas per batch. Saat ini ${queue.value.length} berkas dalam antrian.`
     return
   }
+  
+  for (const file of files) {
+    const problem = clientCheck(file)
+    if (problem) {
+      queue.value.push({
+        file,
+        status: 'failed',
+        error: problem,
+      })
+      continue
+    }
+    
+    // Create thumbnail preview
+    const thumbnailUrl = URL.createObjectURL(file)
+    queue.value.push({
+      file,
+      status: 'pending',
+      thumbnailUrl,
+    })
+  }
+}
+
+function removeFromQueue(index: number) {
+  const item = queue.value[index]
+  if (item.thumbnailUrl) {
+    URL.revokeObjectURL(item.thumbnailUrl)
+  }
+  queue.value.splice(index, 1)
+}
+
+function clearQueue() {
+  for (const item of queue.value) {
+    if (item.thumbnailUrl) {
+      URL.revokeObjectURL(item.thumbnailUrl)
+    }
+  }
+  queue.value = []
+}
+
+async function uploadAll() {
+  if (queue.value.length === 0) return
+  
+  error.value = ''
   busy.value = true
+  
+  const pendingItems = queue.value.filter(q => q.status === 'pending')
+  const files = pendingItems.map(q => q.file)
+  
   try {
-    const detail = await api.upload(file)
-    await router.push(`/hasil/${detail.id}`)
+    // Mark all as uploading
+    for (const item of pendingItems) {
+      item.status = 'uploading'
+    }
+    
+    const results = await api.batchUpload(files)
+    
+    // Map results back to queue items
+    for (const result of results) {
+      const queueItem = pendingItems.find(q => q.file.name === result.filename)
+      if (queueItem) {
+        if (result.status === 'success') {
+          queueItem.status = 'success'
+          queueItem.evidenceId = result.id
+        } else {
+          queueItem.status = 'failed'
+          queueItem.error = result.error
+        }
+      }
+    }
+    
+    // Refresh the evidence list
+    await refresh()
   } catch (e) {
     error.value =
       e instanceof ApiError ? `${e.message} (kode ${e.code})` : 'unggahan gagal, coba lagi.'
+    // Mark all uploading as failed
+    for (const item of pendingItems) {
+      if (item.status === 'uploading') {
+        item.status = 'failed'
+        item.error = 'gagal mengunggah'
+      }
+    }
   } finally {
     busy.value = false
   }
@@ -81,15 +179,23 @@ async function upload(file: File) {
 
 function onPick(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) void upload(file)
+  if (input.files && input.files.length > 0) {
+    addFiles(input.files)
+  }
   input.value = ''
 }
 
 function onDrop(event: DragEvent) {
   dragging.value = false
-  const file = event.dataTransfer?.files?.[0]
-  if (file) void upload(file)
+  if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+    addFiles(event.dataTransfer.files)
+  }
+}
+
+function goToLastUploaded() {
+  if (lastUploadedId.value) {
+    void router.push(`/hasil/${lastUploadedId.value}`)
+  }
 }
 
 async function remove(id: string) {
@@ -125,10 +231,30 @@ onUnmounted(() => {
         Baca signature JPEG
       </h1>
       <p class="mt-2 max-w-2xl text-body-md text-on-surface-variant">
-        Satu berkas JPEG membawa EXIF, dua tabel kuantisasi, dan jejak pipeline encoder. TraceLens
-        membaca apa adanya dari byte berkas lalu membandingkannya dengan tiga profil referensi
+        Satu atau lebih berkas JPEG membawa EXIF, dua tabel kuantisasi, dan jejak pipeline encoder. TraceLens
+        membaca apa adanya dari byte berkas lalu membandingkannya dengan profil referensi
         contoh.
       </p>
+
+      <!-- Reference Stats -->
+      <div v-if="referenceStats" class="mt-4 flex items-center gap-4 text-body-sm text-on-surface-variant">
+        <div class="flex items-center gap-1.5">
+          <AppIcon name="camera" :size="16" class="text-primary" />
+          <span class="font-semibold text-on-surface">{{ referenceStats.total_cameras }}</span>
+          <span>kamera</span>
+        </div>
+        <div class="h-4 w-px bg-outline-variant" />
+        <div class="flex items-center gap-1.5">
+          <span class="font-semibold text-on-surface">{{ referenceStats.total_brands }}</span>
+          <span>brand</span>
+        </div>
+        <div class="h-4 w-px bg-outline-variant" />
+        <div class="flex items-center gap-1.5">
+          <AppIcon name="bolt" :size="14" class="text-warning" />
+          <span class="font-semibold text-on-surface">{{ referenceStats.auto_added_count }}</span>
+          <span>auto-added</span>
+        </div>
+      </div>
 
       <label
         class="mt-5 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed px-6 py-10 text-center transition"
@@ -145,16 +271,17 @@ onUnmounted(() => {
         <input
           type="file"
           accept=".jpg,.jpeg,image/jpeg"
+          multiple
           class="sr-only"
           data-testid="file-input"
           @change="onPick"
         />
         <AppIcon name="folder" :size="26" class="text-primary" />
         <span class="text-body-md font-semibold">
-          {{ busy ? 'Membaca signature…' : 'Tarik JPEG ke sini atau klik untuk memilih' }}
+          {{ busy ? 'Mengunggah…' : 'Tarik JPEG ke sini atau klik untuk memilih' }}
         </span>
         <span class="font-mono text-code-sm text-on-surface-variant">
-          .jpg / .jpeg · maksimal {{ limitMb ?? '…' }} MB · satu berkas
+          .jpg / .jpeg · maksimal {{ limitMb ?? '…' }} MB · hingga 50 berkas
         </span>
         <span class="btn-primary pointer-events-none mt-2">Pilih berkas JPEG</span>
       </label>
@@ -166,6 +293,125 @@ onUnmounted(() => {
       >
         {{ error }}
       </p>
+    </section>
+
+    <!-- Batch Queue -->
+    <section v-if="queueCount > 0" class="card overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant px-4 py-3">
+        <div>
+          <span class="kicker text-[10px]">ANTRIAN UNGGAH</span>
+          <p class="text-body-md font-semibold">
+            {{ queueCount }} berkas dipilih
+            <span v-if="queueSuccess > 0" class="text-success">· {{ queueSuccess }} berhasil</span>
+            <span v-if="queueFailed > 0" class="text-danger">· {{ queueFailed }} gagal</span>
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="!busy && queueSuccess === 0 && queueFailed === 0"
+            type="button"
+            class="btn-secondary h-9 px-3 text-danger"
+            @click="clearQueue"
+          >
+            <AppIcon name="close" :size="15" />
+            Hapus semua
+          </button>
+          <button
+            v-if="!busy && queueCount > 0"
+            type="button"
+            class="btn-primary h-9 px-4"
+            :disabled="queue.filter(q => q.status === 'pending').length === 0"
+            @click="uploadAll"
+          >
+            <AppIcon v-if="busy" name="spinner" :size="15" class="animate-spin" />
+            <AppIcon v-else name="upload" :size="15" />
+            Unggah {{ queue.filter(q => q.status === 'pending').length }} berkas
+          </button>
+          <button
+            v-if="busy"
+            type="button"
+            class="btn-primary h-9 px-4"
+            disabled
+          >
+            <AppIcon name="spinner" :size="15" class="animate-spin" />
+            Mengunggah...
+          </button>
+          <button
+            v-if="!busy && queueSuccess > 0"
+            type="button"
+            class="btn-secondary h-9 px-4"
+            @click="goToLastUploaded"
+          >
+            <AppIcon name="arrow" :size="15" />
+            Lihat hasil
+          </button>
+        </div>
+      </div>
+
+      <ul class="max-h-96 overflow-y-auto">
+        <li
+          v-for="(item, index) in queue"
+          :key="index"
+          class="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/60 px-4 py-3 last:border-0"
+        >
+          <div class="flex min-w-0 flex-1 items-center gap-3">
+            <img
+              v-if="item.thumbnailUrl"
+              :src="item.thumbnailUrl"
+              alt=""
+              class="h-10 w-10 shrink-0 rounded border border-outline-variant object-cover"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-body-sm font-semibold">{{ item.file.name }}</p>
+              <p class="font-mono text-code-sm text-on-surface-variant">
+                {{ fmtSize(item.file.size) }}
+              </p>
+              <p v-if="item.error" class="mt-1 text-code-sm text-danger">
+                {{ item.error }}
+              </p>
+              <p v-if="item.evidenceId" class="mt-1 font-mono text-code-sm text-success">
+                ID: {{ item.evidenceId }}
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span
+              v-if="item.status === 'pending'"
+              class="pill-neutral font-mono uppercase"
+            >
+              menunggu
+            </span>
+            <span
+              v-else-if="item.status === 'uploading'"
+              class="pill-neutral font-mono uppercase"
+            >
+              <AppIcon name="spinner" :size="12" class="animate-spin" />
+              mengunggah
+            </span>
+            <span
+              v-else-if="item.status === 'success'"
+              class="pill-success font-mono uppercase"
+            >
+              berhasil
+            </span>
+            <span
+              v-else-if="item.status === 'failed'"
+              class="pill-danger font-mono uppercase"
+            >
+              gagal
+            </span>
+            <button
+              v-if="!busy && item.status !== 'uploading'"
+              type="button"
+              class="btn-secondary h-9 px-3 text-danger"
+              :title="`Hapus ${item.file.name}`"
+              @click="removeFromQueue(index)"
+            >
+              <AppIcon name="close" :size="15" />
+            </button>
+          </div>
+        </li>
+      </ul>
     </section>
 
     <section class="card overflow-hidden">

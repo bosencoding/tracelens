@@ -18,6 +18,27 @@ const sizeMb = computed(() => ((detail.value?.byte_size ?? 0) / 1024 / 1024).toF
 
 const evidenceId = computed(() => route.params.id as string)
 
+// Manual enrichment state
+const showEnrichForm = ref(false)
+const enrichMake = ref('')
+const enrichModel = ref('')
+const enrichLoading = ref(false)
+const enrichError = ref('')
+const enrichSuccess = ref('')
+
+const hasExifMakeModel = computed(() => {
+  const exif = detail.value?.signature.exif
+  if (!exif) return false
+  const makeField = exif.fields.find(f => f.tag === 'Make')
+  const modelField = exif.fields.find(f => f.tag === 'Model')
+  return makeField?.value && modelField?.value
+})
+
+const hasHighConfidenceMatch = computed(() => {
+  if (!detail.value?.matches || detail.value.matches.length === 0) return false
+  return detail.value.matches.some(m => m.similarity > 0.80)
+})
+
 const tabs = [
   { id: 'exif', label: 'EXIF', icon: 'person' },
   { id: 'qtable', label: 'Tabel Kuantisasi', icon: 'grid' },
@@ -61,6 +82,39 @@ async function copy(value: string, key: string) {
   await navigator.clipboard.writeText(value).catch(() => {})
   copied.value = key
   setTimeout(() => (copied.value = ''), 1500)
+}
+
+async function submitEnrichment() {
+  if (!enrichMake.value.trim() || !enrichModel.value.trim()) {
+    enrichError.value = 'Merk dan tipe kamera harus diisi'
+    return
+  }
+  
+  enrichLoading.value = true
+  enrichError.value = ''
+  enrichSuccess.value = ''
+  
+  try {
+    const result = await api.enrichEvidence(evidenceId.value, {
+      make: enrichMake.value.trim(),
+      model: enrichModel.value.trim()
+    })
+    
+    if (result.added) {
+      enrichSuccess.value = `Kamera berhasil ditambahkan ke referensi (ID: ${result.reference_id})`
+      showEnrichForm.value = false
+      enrichMake.value = ''
+      enrichModel.value = ''
+      // Reload detail to show updated data
+      await load()
+    } else {
+      enrichError.value = result.reason || 'Gagal menambahkan kamera'
+    }
+  } catch (e) {
+    enrichError.value = e instanceof Error ? e.message : 'gagal menambahkan kamera'
+  } finally {
+    enrichLoading.value = false
+  }
 }
 
 onMounted(load)
@@ -243,6 +297,90 @@ watch(evidenceId, load)
           MakerNote: {{ detail.signature.exif.makernote_present ? 'ada' : 'tidak ada' }} · EXIF
           dapat dipalsukan, jadi bobotnya 45%.
         </p>
+        
+        <!-- Manual Enrichment Form -->
+        <div v-if="!hasExifMakeModel && !hasHighConfidenceMatch" class="mt-4 rounded-control border border-warning bg-warning/10 p-4">
+          <div class="flex items-start gap-3">
+            <AppIcon name="alert" :size="20" class="mt-0.5 text-warning flex-shrink-0" />
+            <div class="flex-1">
+              <p class="text-body-sm font-semibold text-warning">EXIF Make/Model tidak ditemukan</p>
+              <p class="mt-1 text-code-sm text-on-surface-variant">
+                Kamera tidak terdeteksi otomatis. Masukkan merk dan tipe kamera secara manual untuk menambahkan ke referensi.
+              </p>
+              
+              <button
+                v-if="!showEnrichForm"
+                type="button"
+                class="btn-secondary mt-3 h-9"
+                @click="showEnrichForm = true"
+              >
+                <AppIcon name="edit" :size="15" />
+                Input Manual
+              </button>
+              
+              <form v-else @submit.prevent="submitEnrichment" class="mt-3 space-y-3">
+                <div>
+                  <label for="enrich-make" class="block text-body-sm font-semibold mb-1">
+                    Merk Kamera <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    id="enrich-make"
+                    v-model="enrichMake"
+                    type="text"
+                    required
+                    maxlength="100"
+                    placeholder="Contoh: Canon, Nikon, Sony"
+                    class="input-field w-full"
+                    :disabled="enrichLoading"
+                  />
+                </div>
+                <div>
+                  <label for="enrich-model" class="block text-body-sm font-semibold mb-1">
+                    Tipe Kamera <span class="text-danger">*</span>
+                  </label>
+                  <input
+                    id="enrich-model"
+                    v-model="enrichModel"
+                    type="text"
+                    required
+                    maxlength="100"
+                    placeholder="Contoh: EOS R5, Z8, A7 IV"
+                    class="input-field w-full"
+                    :disabled="enrichLoading"
+                  />
+                </div>
+                
+                <div v-if="enrichError" class="rounded-control bg-danger/10 border border-danger px-3 py-2 text-code-sm text-danger">
+                  {{ enrichError }}
+                </div>
+                
+                <div v-if="enrichSuccess" class="rounded-control bg-success/10 border border-success px-3 py-2 text-code-sm text-success">
+                  {{ enrichSuccess }}
+                </div>
+                
+                <div class="flex gap-2">
+                  <button
+                    type="submit"
+                    class="btn-primary h-9"
+                    :disabled="enrichLoading"
+                  >
+                    <AppIcon v-if="enrichLoading" name="spinner" :size="15" class="animate-spin" />
+                    <AppIcon v-else name="check" :size="15" />
+                    {{ enrichLoading ? 'Menyimpan...' : 'Simpan ke Referensi' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-secondary h-9"
+                    @click="showEnrichForm = false; enrichError = ''; enrichSuccess = ''"
+                    :disabled="enrichLoading"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-else-if="tab === 'qtable'" class="p-4" data-panel="qtable">

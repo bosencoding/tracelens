@@ -1,4 +1,4 @@
-import type { AppSettings, Evidence, EvidenceDetail, Match, ReferenceCamera, Signature } from './types'
+import type { AppSettings, Evidence, EvidenceDetail, Match, ReferenceCamera, ReferenceStats, Signature } from './types'
 
 // Same host as the page, API port 8001. VITE_API_BASE only overrides when the API is elsewhere.
 const BASE =
@@ -33,9 +33,23 @@ export const api = {
     form.append('file', file)
     return call<EvidenceDetail>('/api/evidence', { method: 'POST', body: form })
   },
+  batchUpload: (files: File[]) => {
+    const form = new FormData()
+    files.forEach(f => form.append('files', f))
+    return call<Array<{ filename: string; status: string; id?: string; error?: string }>>('/api/evidence/batch', {
+      method: 'POST',
+      body: form,
+    })
+  },
   detail: (id: string) => call<EvidenceDetail>(`/api/evidence/${id}`),
   signature: (id: string) => call<Signature>(`/api/evidence/${id}/signature`),
   matches: (id: string) => call<Match[]>(`/api/evidence/${id}/matches`),
+  enrichEvidence: (id: string, body: { make: string; model: string }) =>
+    call<{ added: boolean; reference_id?: string; reason?: string }>(`/api/evidence/${id}/enrich`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   remove: (id: string) => call<void>(`/api/evidence/${id}`, { method: 'DELETE' }),
   imageUrl: (id: string) => `${BASE}/api/evidence/${id}/image`,
   thumbnailUrl: (id: string) => `${BASE}/api/evidence/${id}/thumbnail`,
@@ -47,4 +61,5 @@ export const api = {
       body: JSON.stringify({ max_upload_mb: maxUploadMb }),
     }),
   referenceCameras: () => call<{ cameras: ReferenceCamera[] }>('/api/reference-cameras'),
+  getReferenceStats: () => call<ReferenceStats>('/api/reference-cameras/stats'),
 }

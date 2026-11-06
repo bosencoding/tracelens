@@ -79,6 +79,11 @@ class MatchOut(BaseModel):
     explanation: str
 
 
+class EnrichRequest(BaseModel):
+    make: str = Field(..., min_length=1, max_length=100)
+    model: str = Field(..., min_length=1, max_length=100)
+
+
 class EnrichmentOut(BaseModel):
     added: bool
     reference_id: str | None = None

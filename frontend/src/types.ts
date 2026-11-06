@@ -113,3 +113,11 @@ export interface ReferenceCamera {
 export interface ReferenceList {
   cameras: ReferenceCamera[]
 }
+
+export interface ReferenceStats {
+  total_cameras: number
+  total_brands: number
+  brands: string[]
+  auto_added_count: number
+  manual_count: number
+}
